@@ -36,7 +36,7 @@ export function CreateTaskForm({
   }
 
   return (
-    <Card className="max-w-2xl">
+    <Card className="max-w-2xl shadow-xs">
       <CardContent className="pt-6">
         <form onSubmit={handleSubmit} className="flex flex-col gap-5">
           {/* Title */}

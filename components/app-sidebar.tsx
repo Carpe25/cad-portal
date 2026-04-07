@@ -8,7 +8,6 @@ import {
   BarChart2,
   Wallet,
   CalendarClock,
-  LogOut,
   SplinePointer,
 } from "lucide-react"
 
@@ -21,12 +20,14 @@ import {
   SidebarGroupLabel,
   SidebarHeader,
   SidebarMenu,
-  SidebarMenuButton,
   SidebarMenuItem,
   SidebarSeparator,
 } from "@/components/ui/sidebar"
+import { Avatar, AvatarFallback } from "@/components/ui/avatar"
+import { TooltipProvider } from "@/components/ui/tooltip"
 import { ClockInButton } from "@/components/clock-in-button"
 import { LogoutButton } from "@/components/logout-button"
+import { SidebarNavItem } from "@/components/sidebar-nav-item"
 import type { SessionUser } from "@/lib/session"
 import { sql } from "@/lib/db"
 
@@ -89,7 +90,6 @@ function getNavItems(roles: string[]): { group: string; items: NavItem[] }[] {
     ]
   }
 
-  // Designer
   return [
     {
       group: "Overview",
@@ -97,7 +97,7 @@ function getNavItems(roles: string[]): { group: string; items: NavItem[] }[] {
     },
     {
       group: "Work",
-      items: [{ label: "My Tasks", href: "/tasks", icon: ListTodo }],
+      items: [{ label: "Tasks", href: "/tasks", icon: ListTodo }],
     },
     {
       group: "Earnings",
@@ -107,16 +107,23 @@ function getNavItems(roles: string[]): { group: string; items: NavItem[] }[] {
 }
 
 function getRoleBadge(roles: string[]) {
-  if (roles.includes("manager")) return { label: "Manager", color: "bg-primary/10 text-primary" }
-  if (roles.includes("qc")) return { label: "QC", color: "bg-amber-500/10 text-amber-600 dark:text-amber-400" }
-  return { label: "Designer", color: "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400" }
+  if (roles.includes("manager"))
+    return { label: "Manager", color: "bg-primary/15 text-primary" }
+  if (roles.includes("qc"))
+    return {
+      label: "QC",
+      color: "bg-amber-500/15 text-amber-600 dark:text-amber-400",
+    }
+  return {
+    label: "Designer",
+    color: "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400",
+  }
 }
 
 export async function AppSidebar({ session }: { session: SessionUser }) {
   const navGroups = getNavItems(session.roles)
   const badge = getRoleBadge(session.roles)
 
-  // Check if user is clocked in today
   const today = new Date().toISOString().split("T")[0]
   const rows = await sql`
     SELECT id, login_at, logout_at FROM attendance
@@ -128,21 +135,30 @@ export async function AppSidebar({ session }: { session: SessionUser }) {
     | undefined
   const isClockedIn = !!todayAttendance && !todayAttendance.logout_at
 
+  const initials = session.name
+    .split(" ")
+    .slice(0, 2)
+    .map((n) => n[0])
+    .join("")
+    .toUpperCase()
+
   return (
     <Sidebar>
       {/* Brand */}
       <SidebarHeader className="px-4 py-4">
-        <div className="flex items-center gap-2.5">
-          <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-primary">
-            <SplinePointer strokeWidth={1.5} className="text-primary-foreground" size={20} />
+        <div className="flex items-center gap-3">
+          <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-primary shadow-sm">
+            <SplinePointer
+              strokeWidth={1.5}
+              className="text-primary-foreground"
+              size={18}
+            />
           </div>
-          <div>
-            <p className="font-heading text-sm font-semibold leading-none">
+          <div className="min-w-0">
+            <p className="font-heading truncate text-sm font-semibold leading-none">
               CAD Portal
             </p>
-            <p className="mt-0.5 text-xs text-muted-foreground">
-              Carpe Diam
-            </p>
+            <p className="mt-0.5 text-xs text-muted-foreground">Carpe Diam</p>
           </div>
         </div>
       </SidebarHeader>
@@ -158,12 +174,11 @@ export async function AppSidebar({ session }: { session: SessionUser }) {
               <SidebarMenu>
                 {group.items.map((item) => (
                   <SidebarMenuItem key={item.href}>
-                    <SidebarMenuButton asChild>
-                      <Link href={item.href}>
-                        <item.icon className="h-4 w-4" />
-                        <span>{item.label}</span>
-                      </Link>
-                    </SidebarMenuButton>
+                    <SidebarNavItem
+                      href={item.href}
+                      icon={<item.icon className="h-4 w-4" />}
+                      label={item.label}
+                    />
                   </SidebarMenuItem>
                 ))}
               </SidebarMenu>
@@ -171,43 +186,51 @@ export async function AppSidebar({ session }: { session: SessionUser }) {
           </SidebarGroup>
         ))}
 
-        {/* Attendance always at bottom of nav */}
         <SidebarGroup>
           <SidebarGroupLabel>System</SidebarGroupLabel>
           <SidebarGroupContent>
             <SidebarMenu>
               <SidebarMenuItem>
-                <SidebarMenuButton asChild>
-                  <Link href="/attendance">
-                    <CalendarClock className="h-4 w-4" />
-                    <span>Attendance</span>
-                  </Link>
-                </SidebarMenuButton>
+                <SidebarNavItem
+                  href="/attendance"
+                  icon={<CalendarClock className="h-4 w-4" />}
+                  label="Attendance"
+                />
               </SidebarMenuItem>
             </SidebarMenu>
           </SidebarGroupContent>
         </SidebarGroup>
       </SidebarContent>
 
-      {/* Footer: Clock in + User */}
+      {/* Footer */}
       <SidebarFooter className="px-3 py-3">
-        <ClockInButton isClockedIn={isClockedIn} attendanceId={todayAttendance?.id} />
+        <ClockInButton
+          isClockedIn={isClockedIn}
+          attendanceId={todayAttendance?.id}
+        />
 
         <SidebarSeparator className="my-2" />
 
-        <div className="flex items-center justify-between gap-2">
-          <div className="min-w-0">
-            <p className="truncate text-sm font-medium leading-none">
-              {session.name}
-            </p>
-            <span
-              className={`mt-1 inline-block rounded-full px-2 py-0.5 text-xs font-medium ${badge.color}`}
-            >
-              {badge.label}
-            </span>
+        <TooltipProvider delayDuration={300}>
+          <div className="flex items-center gap-2.5">
+            <Avatar className="h-8 w-8 shrink-0">
+              <AvatarFallback className="bg-primary/15 text-xs font-semibold text-primary">
+                {initials}
+              </AvatarFallback>
+            </Avatar>
+            <div className="min-w-0 flex-1">
+              <p className="truncate text-sm font-medium leading-none">
+                {session.name}
+              </p>
+              <span
+                className={`mt-1 inline-block rounded-full px-2 py-0.5 text-xs font-medium ${badge.color}`}
+              >
+                {badge.label}
+              </span>
+            </div>
+            <LogoutButton />
           </div>
-          <LogoutButton />
-        </div>
+        </TooltipProvider>
       </SidebarFooter>
     </Sidebar>
   )

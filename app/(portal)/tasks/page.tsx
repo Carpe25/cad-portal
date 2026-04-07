@@ -3,31 +3,8 @@ import { getSession } from "@/lib/session"
 import { redirect } from "next/navigation"
 import { sql } from "@/lib/db"
 import { Button } from "@/components/ui/button"
-import { PlusSquare } from "lucide-react"
-
-const STATUS_LABELS: Record<string, string> = {
-  assigned: "Assigned",
-  in_progress: "In Progress",
-  in_qc_review: "In QC Review",
-  revision_requested: "Revision",
-  client_ready: "Client Ready",
-  closed: "Closed",
-}
-
-const STATUS_COLORS: Record<string, string> = {
-  assigned: "bg-secondary text-secondary-foreground",
-  in_progress: "bg-blue-500/10 text-blue-600 dark:text-blue-400",
-  in_qc_review: "bg-amber-500/10 text-amber-600 dark:text-amber-400",
-  revision_requested: "bg-destructive/10 text-destructive",
-  client_ready: "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400",
-  closed: "bg-secondary text-muted-foreground",
-}
-
-const PRIORITY_COLORS: Record<string, string> = {
-  high: "bg-red-500/10 text-red-600 dark:text-red-400",
-  medium: "bg-amber-500/10 text-amber-600 dark:text-amber-400",
-  low: "bg-secondary text-muted-foreground",
-}
+import { InboxIcon, PlusSquare } from "lucide-react"
+import { STATUS_LABELS, STATUS_COLORS, PRIORITY_COLORS } from "@/lib/task-utils"
 
 type Task = {
   id: string
@@ -246,11 +223,7 @@ export default async function TasksPage() {
           </span>
         </div>
         {myTasks.length === 0 ? (
-          <div className="flex flex-col items-center gap-2 rounded-xl border border-border bg-card py-10 text-center">
-            <p className="text-sm text-muted-foreground">
-              You have no active tasks right now.
-            </p>
-          </div>
+          <EmptyState message="You have no active tasks right now." />
         ) : (
           <TaskTable tasks={myTasks} showDesigner={false} useAutoPriority={false} />
         )}
@@ -270,11 +243,7 @@ export default async function TasksPage() {
           Priority auto-escalates every 8 hours — claim high-priority tasks first.
         </p>
         {unassignedTasks.length === 0 ? (
-          <div className="flex flex-col items-center gap-2 rounded-xl border border-border bg-card py-10 text-center">
-            <p className="text-sm text-muted-foreground">
-              No open tasks available right now.
-            </p>
-          </div>
+          <EmptyState message="No open tasks available right now." />
         ) : (
           <TaskTable
             tasks={unassignedTasks}
@@ -299,17 +268,24 @@ export default async function TasksPage() {
             Tasks currently being worked on by other team members.
           </p>
           {teamTasks.length === 0 ? (
-            <div className="flex flex-col items-center gap-2 rounded-xl border border-border bg-card py-10 text-center">
-              <p className="text-sm text-muted-foreground">
-                No active team tasks right now.
-              </p>
-            </div>
+            <EmptyState message="No active team tasks right now." />
           ) : (
             // We pass showDesigner={true} here so Managers/QC can see who is working on it
             <TaskTable tasks={teamTasks} showDesigner={true} useAutoPriority={false} />
           )}
         </section>
       )}
+    </div>
+  )
+}
+
+function EmptyState({ message }: { message: string }) {
+  return (
+    <div className="flex flex-col items-center gap-2 rounded-xl border border-border bg-card py-10 text-center">
+      <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-muted">
+        <InboxIcon className="h-5 w-5 text-muted-foreground" />
+      </div>
+      <p className="text-sm text-muted-foreground">{message}</p>
     </div>
   )
 }

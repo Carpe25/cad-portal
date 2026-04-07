@@ -2,33 +2,13 @@ import { notFound, redirect } from "next/navigation"
 import { getSession } from "@/lib/session"
 import { sql } from "@/lib/db"
 import { extractDriveFolderId, getDriveEmbedUrl } from "@/lib/drive"
-import { Badge } from "@/components/ui/badge"
 import { Separator } from "@/components/ui/separator"
 import { TaskActions } from "./task-actions"
-
-const STATUS_LABELS: Record<string, string> = {
-  assigned: "Assigned",
-  in_progress: "In Progress",
-  in_qc_review: "In QC Review",
-  revision_requested: "Revision Requested",
-  client_ready: "Client Ready",
-  closed: "Closed",
-}
-
-const STATUS_COLORS: Record<string, string> = {
-  assigned: "bg-secondary text-secondary-foreground",
-  in_progress: "bg-blue-500/10 text-blue-600 dark:text-blue-400",
-  in_qc_review: "bg-amber-500/10 text-amber-600 dark:text-amber-400",
-  revision_requested: "bg-destructive/10 text-destructive",
-  client_ready: "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400",
-  closed: "bg-secondary text-muted-foreground",
-}
-
-const PRIORITY_COLORS: Record<string, string> = {
-  high: "bg-red-500/10 text-red-600 dark:text-red-400",
-  medium: "bg-amber-500/10 text-amber-600 dark:text-amber-400",
-  low: "bg-secondary text-muted-foreground",
-}
+import {
+  STATUS_LABELS_FULL as STATUS_LABELS,
+  STATUS_COLORS,
+  PRIORITY_COLORS,
+} from "@/lib/task-utils"
 
 type Task = {
   id: string
@@ -158,18 +138,18 @@ export default async function TaskDetailPage({
         {/* Left: Details + Actions */}
         <div className="flex flex-col gap-4 lg:col-span-2">
           {/* Meta card */}
-          <div className="rounded-xl border border-border bg-card p-4">
-            <h2 className="mb-3 text-xs font-medium uppercase tracking-wide text-muted-foreground">
+          <div className="rounded-xl border border-border bg-card p-5 shadow-xs">
+            <h2 className="mb-4 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
               Task Details
             </h2>
-            <dl className="grid grid-cols-2 gap-x-6 gap-y-3 text-sm">
+            <dl className="grid grid-cols-2 gap-x-6 gap-y-4 text-sm sm:grid-cols-4">
               <div>
-                <dt className="text-muted-foreground">Points</dt>
-                <dd className="font-semibold">{task.points} pts</dd>
+                <dt className="text-xs text-muted-foreground">Points</dt>
+                <dd className="mt-0.5 font-semibold">{task.points} pts</dd>
               </div>
               <div>
-                <dt className="text-muted-foreground">Deadline</dt>
-                <dd className="font-medium">
+                <dt className="text-xs text-muted-foreground">Deadline</dt>
+                <dd className="mt-0.5 font-medium">
                   {task.deadline
                     ? new Date(task.deadline).toLocaleDateString("en-IN", {
                         day: "numeric",
@@ -180,12 +160,12 @@ export default async function TaskDetailPage({
                 </dd>
               </div>
               <div>
-                <dt className="text-muted-foreground">Created by</dt>
-                <dd>{task.manager_name}</dd>
+                <dt className="text-xs text-muted-foreground">Created by</dt>
+                <dd className="mt-0.5">{task.manager_name}</dd>
               </div>
               <div>
-                <dt className="text-muted-foreground">Created on</dt>
-                <dd>
+                <dt className="text-xs text-muted-foreground">Created on</dt>
+                <dd className="mt-0.5">
                   {new Date(task.created_at).toLocaleDateString("en-IN", {
                     day: "numeric",
                     month: "short",
@@ -196,7 +176,7 @@ export default async function TaskDetailPage({
             </dl>
             {task.description && (
               <>
-                <Separator className="my-3" />
+                <Separator className="my-4" />
                 <p className="text-sm leading-relaxed text-muted-foreground">
                   {task.description}
                 </p>
@@ -204,9 +184,9 @@ export default async function TaskDetailPage({
             )}
             {task.revision_notes && (
               <>
-                <Separator className="my-3" />
-                <div className="rounded-lg bg-amber-500/10 px-3 py-2">
-                  <p className="text-xs font-medium text-amber-600 dark:text-amber-400">
+                <Separator className="my-4" />
+                <div className="rounded-lg border border-amber-500/20 bg-amber-500/8 px-4 py-3">
+                  <p className="text-xs font-semibold text-amber-600 dark:text-amber-400">
                     Client Revision Notes
                   </p>
                   <p className="mt-1 text-sm text-foreground">
@@ -239,16 +219,16 @@ export default async function TaskDetailPage({
 
           {/* Version History */}
           {submissions.length > 0 && (
-            <div className="rounded-xl border border-border bg-card">
-              <div className="px-4 py-3">
-                <h2 className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+            <div className="overflow-hidden rounded-xl border border-border bg-card shadow-xs">
+              <div className="px-5 py-4">
+                <h2 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
                   Submission History
                 </h2>
               </div>
               <Separator />
               <div className="divide-y divide-border">
                 {submissions.map((sub, idx) => (
-                  <div key={sub.id} className="px-4 py-3">
+                  <div key={sub.id} className="px-5 py-4">
                     <div className="flex items-center justify-between gap-2">
                       <div className="flex items-center gap-2">
                         <span className="font-mono text-xs font-semibold">
@@ -292,8 +272,8 @@ export default async function TaskDetailPage({
                       Open CAD file →
                     </a>
                     {sub.remarks && (
-                      <div className="mt-2 rounded-lg bg-destructive/10 px-3 py-2">
-                        <p className="text-xs font-medium text-destructive">
+                      <div className="mt-2.5 rounded-lg border border-destructive/20 bg-destructive/8 px-3.5 py-2.5">
+                        <p className="text-xs font-semibold text-destructive">
                           QC Remarks
                         </p>
                         <p className="mt-0.5 text-xs text-foreground">
@@ -310,9 +290,9 @@ export default async function TaskDetailPage({
 
         {/* Right: Drive Folder Preview */}
         <div className="flex flex-col gap-4">
-          <div className="rounded-xl border border-border bg-card overflow-hidden">
-            <div className="px-4 py-3">
-              <h2 className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+          <div className="overflow-hidden rounded-xl border border-border bg-card shadow-xs">
+            <div className="px-5 py-4">
+              <h2 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
                 Reference Files
               </h2>
             </div>

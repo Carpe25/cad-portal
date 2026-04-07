@@ -2,7 +2,10 @@
 
 import { useState, useTransition } from "react"
 import { loginAction } from "./actions"
-import { cn } from "@/lib/utils"
+import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
+import { SplinePointer } from "lucide-react"
 
 export default function LoginPage() {
   const [error, setError] = useState<string | null>(null)
@@ -19,113 +22,128 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-background px-4">
-      <div className="w-full max-w-sm">
-        {/* Logo / Brand */}
-        <div className="mb-8 text-center">
-          <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-xl bg-primary">
-            <svg
-              className="h-6 w-6 text-primary-foreground"
-              fill="none"
-              viewBox="0 0 24 24"
-              stroke="currentColor"
-              strokeWidth={2}
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                d="M9 7h6m0 10v-3m-3 3h.01M9 17h.01M9 11h.01M12 11h.01M15 11h.01M4 19h16a2 2 0 002-2V7a2 2 0 00-2-2H4a2 2 0 00-2 2v10a2 2 0 002 2z"
-              />
-            </svg>
+    <div className="flex min-h-screen bg-background">
+      {/* Left brand panel */}
+      <div className="relative hidden flex-col justify-between overflow-hidden bg-primary p-10 md:flex md:w-2/5 lg:w-1/3">
+        {/* Subtle grid pattern */}
+        <div
+          className="absolute inset-0 opacity-10"
+          style={{
+            backgroundImage:
+              "linear-gradient(oklch(1 0 0 / 15%) 1px, transparent 1px), linear-gradient(90deg, oklch(1 0 0 / 15%) 1px, transparent 1px)",
+            backgroundSize: "32px 32px",
+          }}
+        />
+
+        <div className="relative">
+          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-white/20 shadow-sm">
+            <SplinePointer
+              strokeWidth={1.5}
+              className="text-white"
+              size={20}
+            />
           </div>
-          <h1 className="font-heading text-2xl font-semibold tracking-tight">
+          <h1 className="font-heading mt-6 text-2xl font-bold text-white">
             CAD Portal
           </h1>
-          <p className="mt-1 text-sm text-muted-foreground">
-            Carpe Diam Internal Tools
+          <p className="mt-2 text-sm leading-relaxed text-white/70">
+            Carpe Diam internal tools for managing CAD tasks, QC workflows, and
+            team productivity.
           </p>
         </div>
 
-        {/* Card */}
-        <div className="rounded-xl border border-border bg-card p-6 shadow-sm">
-          <h2 className="mb-1 text-base font-medium">Sign in</h2>
-          <p className="mb-5 text-sm text-muted-foreground">
-            Enter your credentials to continue
-          </p>
+        <div className="relative space-y-3">
+          {[
+            "Track tasks from assignment to delivery",
+            "Auto-escalating priority queue",
+            "Integrated QC review workflow",
+          ].map((line) => (
+            <div key={line} className="flex items-center gap-2.5">
+              <div className="h-1.5 w-1.5 shrink-0 rounded-full bg-white/50" />
+              <p className="text-xs text-white/60">{line}</p>
+            </div>
+          ))}
+        </div>
+      </div>
 
-          <form onSubmit={handleSubmit} className="flex flex-col gap-4">
+      {/* Right form panel */}
+      <div className="flex flex-1 items-center justify-center px-6 py-12">
+        <div className="w-full max-w-sm">
+          {/* Mobile-only brand */}
+          <div className="mb-8 flex items-center gap-3 md:hidden">
+            <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-primary">
+              <SplinePointer
+                strokeWidth={1.5}
+                className="text-primary-foreground"
+                size={18}
+              />
+            </div>
+            <div>
+              <p className="font-heading text-base font-semibold leading-none">
+                CAD Portal
+              </p>
+              <p className="mt-0.5 text-xs text-muted-foreground">
+                Carpe Diam
+              </p>
+            </div>
+          </div>
+
+          <div className="mb-8">
+            <h2 className="font-heading text-2xl font-semibold tracking-tight">
+              Welcome back
+            </h2>
+            <p className="mt-1.5 text-sm text-muted-foreground">
+              Sign in to your account to continue
+            </p>
+          </div>
+
+          <form onSubmit={handleSubmit} className="flex flex-col gap-5">
             <div className="flex flex-col gap-1.5">
-              <label
-                htmlFor="email"
-                className="text-sm font-medium leading-none"
-              >
-                Email
-              </label>
-              <input
+              <Label htmlFor="email">Email address</Label>
+              <Input
                 id="email"
                 name="email"
                 type="email"
                 autoComplete="email"
                 required
-                placeholder="you@example.com"
-                className={cn(
-                  "h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-xs",
-                  "placeholder:text-muted-foreground",
-                  "focus:outline-none focus:ring-2 focus:ring-ring",
-                  "disabled:cursor-not-allowed disabled:opacity-50"
-                )}
+                placeholder="you@carpediam.in"
                 disabled={isPending}
               />
             </div>
 
             <div className="flex flex-col gap-1.5">
-              <label
-                htmlFor="password"
-                className="text-sm font-medium leading-none"
-              >
-                Password
-              </label>
-              <input
+              <Label htmlFor="password">Password</Label>
+              <Input
                 id="password"
                 name="password"
                 type="password"
                 autoComplete="current-password"
                 required
                 placeholder="••••••••"
-                className={cn(
-                  "h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-xs",
-                  "placeholder:text-muted-foreground",
-                  "focus:outline-none focus:ring-2 focus:ring-ring",
-                  "disabled:cursor-not-allowed disabled:opacity-50"
-                )}
                 disabled={isPending}
               />
             </div>
 
             {error && (
-              <p className="rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">
-                {error}
-              </p>
+              <div className="rounded-lg border border-destructive/20 bg-destructive/8 px-3.5 py-2.5">
+                <p className="text-sm text-destructive">{error}</p>
+              </div>
             )}
 
-            <button
+            <Button
               type="submit"
               disabled={isPending}
-              className={cn(
-                "mt-1 h-9 w-full rounded-md bg-primary px-4 text-sm font-medium text-primary-foreground shadow-xs",
-                "hover:bg-primary/90 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2",
-                "disabled:cursor-not-allowed disabled:opacity-60",
-                "transition-colors"
-              )}
+              className="mt-1 h-10 w-full"
             >
               {isPending ? "Signing in…" : "Sign in"}
-            </button>
+            </Button>
           </form>
-        </div>
 
-        <p className="mt-6 text-center text-xs text-muted-foreground">
-          Contact your manager to get access
-        </p>
+          <p className="mt-8 text-center text-xs text-muted-foreground">
+            Don&apos;t have access?{" "}
+            <span className="text-foreground">Contact your manager.</span>
+          </p>
+        </div>
       </div>
     </div>
   )
