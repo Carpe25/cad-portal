@@ -8,11 +8,25 @@ import { getSession } from "@/lib/session"
 export async function assignToMeAction(taskId: string) {
   const session = await getSession()
   if (!session) return { error: "Unauthorized" }
+  const canWork = session.roles.includes("designer") || session.roles.includes("qc")
+  if (!canWork) return { error: "Unauthorized" }
+
+  // Only allow claiming if the task is unassigned or pre-assigned to this user
+  const rows = await sql`
+    SELECT assigned_to FROM tasks WHERE id = ${taskId} AND status = 'assigned'
+  `
+  if (rows.length === 0) return { error: "Task is not available" }
+
+  const task = rows[0] as { assigned_to: string | null }
+  if (task.assigned_to !== null && task.assigned_to !== session.id) {
+    return { error: "This task is assigned to another designer" }
+  }
 
   await sql`
     UPDATE tasks
     SET assigned_to = ${session.id}, status = 'in_progress'
     WHERE id = ${taskId} AND status = 'assigned'
+      AND (assigned_to IS NULL OR assigned_to = ${session.id})
   `
   revalidatePath(`/tasks/${taskId}`)
   revalidatePath("/tasks")
@@ -28,7 +42,7 @@ export async function submitForQCAction(taskId: string, driveLink: string) {
   const countRows = await sql`
     SELECT COUNT(*) FROM submissions WHERE task_id = ${taskId}
   `
-  const count = parseInt((countRows[0] as { count: string }).count, 10)
+  const count = Number((countRows[0] as { count: string | number }).count)
   const version = `V${count + 1}`
 
   await sql`
@@ -41,6 +55,7 @@ export async function submitForQCAction(taskId: string, driveLink: string) {
   `
 
   revalidatePath(`/tasks/${taskId}`)
+  revalidatePath("/tasks")
 }
 
 export async function approveSubmissionAction(
@@ -70,15 +85,20 @@ export async function approveSubmissionAction(
     UPDATE tasks SET status = 'client_ready' WHERE id = ${taskId}
   `
 
-  // Credit points
+  // Credit points — guard against duplicate approvals on the same submission
   const month = new Date().toISOString().slice(0, 7)
-  await sql`
-    INSERT INTO points_log (user_id, task_id, submission_id, points, month)
-    VALUES (${task.assigned_to}, ${taskId}, ${submissionId}, ${task.points}, ${month})
-    ON CONFLICT DO NOTHING
+  const existing = await sql`
+    SELECT id FROM points_log WHERE submission_id = ${submissionId}
   `
+  if (existing.length === 0) {
+    await sql`
+      INSERT INTO points_log (user_id, task_id, submission_id, points, month)
+      VALUES (${task.assigned_to}, ${taskId}, ${submissionId}, ${task.points}, ${month})
+    `
+  }
 
   revalidatePath(`/tasks/${taskId}`)
+  revalidatePath("/tasks")
   revalidatePath("/qc-queue")
 }
 
@@ -105,6 +125,7 @@ export async function sendBackAction(
   `
 
   revalidatePath(`/tasks/${taskId}`)
+  revalidatePath("/tasks")
   revalidatePath("/qc-queue")
 }
 
@@ -114,6 +135,7 @@ export async function closeTaskAction(taskId: string) {
 
   await sql`UPDATE tasks SET status = 'closed' WHERE id = ${taskId}`
   revalidatePath(`/tasks/${taskId}`)
+  revalidatePath("/tasks")
 }
 
 export async function reopenForClientRevisionAction(
@@ -131,9 +153,11 @@ export async function reopenForClientRevisionAction(
       status = 'assigned',
       revision_notes = ${revisionNotes},
       points = ${newPoints},
-      assigned_to = COALESCE(${newDesignerId}, assigned_to)
+      assigned_to = ${newDesignerId}
     WHERE id = ${taskId}
   `
 
   revalidatePath(`/tasks/${taskId}`)
+  revalidatePath("/tasks")
+  revalidatePath("/dashboard")
 }

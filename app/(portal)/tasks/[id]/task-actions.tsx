@@ -48,7 +48,14 @@ export function TaskActions({
 
   const isManager = session.roles.includes("manager")
   const isQC = session.roles.includes("qc")
-  const isAssignedDesigner = task.assigned_to === session.id
+  const isDesigner = session.roles.includes("designer")
+  // QC can also work on tasks as a designer
+  const canWork = isDesigner || isQC
+  const isAssignedWorker = task.assigned_to === session.id
+  const isUnassignedTask = task.assigned_to === null
+
+  // Keep legacy alias used in JSX below
+  const isAssignedDesigner = isAssignedWorker
 
   function run(fn: () => Promise<{ error?: string } | void | undefined>) {
     setError(null)
@@ -62,7 +69,8 @@ export function TaskActions({
   if (
     !isManager &&
     !isQC &&
-    !isAssignedDesigner
+    !isAssignedWorker &&
+    !(canWork && isUnassignedTask)
   ) return null
 
   return (
@@ -73,8 +81,8 @@ export function TaskActions({
 
       <div className="flex flex-col gap-3">
 
-        {/* Designer: Assign to me */}
-        {task.status === "assigned" && isAssignedDesigner && (
+        {/* Designer/QC: Assign to me */}
+        {task.status === "assigned" && (isAssignedDesigner || (canWork && isUnassignedTask)) && (
           <div>
             <p className="mb-2 text-sm text-muted-foreground">
               This task is waiting for you to accept it.
@@ -251,14 +259,14 @@ export function TaskActions({
                       />
                     </div>
                     <div className="flex flex-col gap-1.5">
-                      <Label>Reassign to (optional)</Label>
+                      <Label>Assign to (optional)</Label>
                       <Select
                         value={newDesignerId}
                         onValueChange={setNewDesignerId}
                         disabled={isPending}
                       >
                         <SelectTrigger>
-                          <SelectValue placeholder="Keep same designer" />
+                          <SelectValue placeholder="Open to all designers" />
                         </SelectTrigger>
                         <SelectContent>
                           {designers.map((d) => (

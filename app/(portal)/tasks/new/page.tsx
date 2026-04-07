@@ -5,7 +5,7 @@ import { CreateTaskForm } from "./create-task-form"
 
 export default async function NewTaskPage() {
   const session = await getSession()
-  if (!session || !session.roles.includes("manager")) redirect("/dashboard")
+  if (!session || (!session.roles.includes("manager") && !session.roles.includes("qc"))) redirect("/dashboard")
 
   const designers = await sql`
     SELECT id, name FROM users

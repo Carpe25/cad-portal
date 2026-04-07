@@ -47,12 +47,5 @@ export async function loginAction(formData: FormData) {
     roles: user.roles,
   })
 
-  // Redirect based on primary role (manager > qc > designer)
-  if (user.roles.includes("manager")) {
-    redirect("/dashboard/manager")
-  } else if (user.roles.includes("qc")) {
-    redirect("/dashboard/qc")
-  } else {
-    redirect("/dashboard/designer")
-  }
+  redirect("/dashboard")
 }

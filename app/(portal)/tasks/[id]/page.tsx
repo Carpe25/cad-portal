@@ -111,8 +111,8 @@ export default async function TaskDetailPage({
     : null
   const embedUrl = folderId ? getDriveEmbedUrl(folderId) : null
 
-  // Get all designers for reassignment (manager only)
-  const designers = isManager
+  // Get all designers for reassignment (manager + qc)
+  const designers = (isManager || isQC)
     ? ((await sql`SELECT id, name FROM users WHERE active = true AND roles @> ARRAY['designer']::text[] ORDER BY name`) as { id: string; name: string }[])
     : []
 

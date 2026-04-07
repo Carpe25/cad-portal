@@ -22,14 +22,12 @@ export function CreateTaskForm({
 }) {
   const [error, setError] = useState<string | null>(null)
   const [isPending, startTransition] = useTransition()
-  const [priority, setPriority] = useState("medium")
   const [assignedTo, setAssignedTo] = useState("")
 
   function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault()
     setError(null)
     const formData = new FormData(e.currentTarget)
-    formData.set("priority", priority)
     formData.set("assigned_to", assignedTo)
     startTransition(async () => {
       const result = await createTaskAction(formData)
@@ -88,33 +86,18 @@ export function CreateTaskForm({
             />
           </div>
 
-          {/* Points + Priority */}
-          <div className="grid grid-cols-2 gap-4">
-            <div className="flex flex-col gap-1.5">
-              <Label htmlFor="points">Points *</Label>
-              <Input
-                id="points"
-                name="points"
-                type="number"
-                min={1}
-                placeholder="e.g. 10"
-                required
-                disabled={isPending}
-              />
-            </div>
-            <div className="flex flex-col gap-1.5">
-              <Label>Priority *</Label>
-              <Select value={priority} onValueChange={setPriority} disabled={isPending}>
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="high">High</SelectItem>
-                  <SelectItem value="medium">Medium</SelectItem>
-                  <SelectItem value="low">Low</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
+          {/* Points */}
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="points">Points *</Label>
+            <Input
+              id="points"
+              name="points"
+              type="number"
+              min={1}
+              placeholder="e.g. 10"
+              required
+              disabled={isPending}
+            />
           </div>
 
           {/* Deadline */}
@@ -170,7 +153,12 @@ export function CreateTaskForm({
             <Button type="submit" disabled={isPending}>
               {isPending ? "Creating…" : "Create Task"}
             </Button>
-            <Button type="button" variant="outline" disabled={isPending}>
+            <Button
+              type="button"
+              variant="outline"
+              disabled={isPending}
+              onClick={() => window.history.back()}
+            >
               Cancel
             </Button>
           </div>

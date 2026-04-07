@@ -2,6 +2,7 @@ import Link from "next/link"
 import { getSession } from "@/lib/session"
 import { redirect } from "next/navigation"
 import { sql } from "@/lib/db"
+import { DriveLink } from "./drive-link"
 
 type QueueItem = {
   task_id: string
@@ -108,15 +109,7 @@ export default async function QCQueuePage() {
               </div>
 
               <div className="flex items-center justify-between">
-                <a
-                  href={item.drive_link}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  onClick={(e) => e.stopPropagation()}
-                  className="text-xs text-primary hover:underline"
-                >
-                  Open CAD →
-                </a>
+                <DriveLink href={item.drive_link} />
                 <span className="text-xs text-muted-foreground">
                   {new Date(item.submitted_at).toLocaleString("en-IN", {
                     day: "numeric",

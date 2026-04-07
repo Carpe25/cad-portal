@@ -1,8 +1,8 @@
 import { getSession } from "@/lib/session"
 import { redirect } from "next/navigation"
 import { sql } from "@/lib/db"
-import { Badge } from "@/components/ui/badge"
 import { AddMemberButton } from "./add-member-button"
+import { EditMemberButton } from "./edit-member-button"
 
 type Member = {
   id: string
@@ -10,6 +10,7 @@ type Member = {
   email: string
   roles: string[]
   rate_per_point: number
+  experience_years: number
   active: boolean
   created_at: string
 }
@@ -25,7 +26,7 @@ export default async function TeamPage() {
   if (!session || !session.roles.includes("manager")) redirect("/dashboard")
 
   const members = (await sql`
-    SELECT id, name, email, roles, rate_per_point, active, created_at
+    SELECT id, name, email, roles, rate_per_point, experience_years, active, created_at
     FROM users
     ORDER BY created_at ASC
   `) as Member[]
@@ -50,7 +51,9 @@ export default async function TeamPage() {
               <th className="px-4 py-3 text-left font-medium text-muted-foreground">Email</th>
               <th className="px-4 py-3 text-left font-medium text-muted-foreground">Roles</th>
               <th className="px-4 py-3 text-left font-medium text-muted-foreground">Rate / pt</th>
+              <th className="px-4 py-3 text-left font-medium text-muted-foreground">Experience</th>
               <th className="px-4 py-3 text-left font-medium text-muted-foreground">Status</th>
+              <th className="px-4 py-3 text-left font-medium text-muted-foreground"></th>
             </tr>
           </thead>
           <tbody>
@@ -76,12 +79,18 @@ export default async function TeamPage() {
                 <td className="px-4 py-3 font-medium">
                   ₹{Number(m.rate_per_point).toLocaleString("en-IN")}/pt
                 </td>
+                <td className="px-4 py-3 text-muted-foreground">
+                  {m.experience_years ?? 0} {(m.experience_years ?? 0) === 1 ? "yr" : "yrs"}
+                </td>
                 <td className="px-4 py-3">
                   <span
                     className={`rounded-full px-2 py-0.5 text-xs font-medium ${m.active ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400" : "bg-secondary text-muted-foreground"}`}
                   >
                     {m.active ? "Active" : "Inactive"}
                   </span>
+                </td>
+                <td className="px-4 py-3">
+                  <EditMemberButton member={m} />
                 </td>
               </tr>
             ))}

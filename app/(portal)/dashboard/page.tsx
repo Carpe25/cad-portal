@@ -26,10 +26,10 @@ async function ManagerDashboard({ session }: { session: { name: string } }) {
     ])
 
   const stats = [
-    { label: "In Progress", value: (inProgress[0] as { count: string }).count },
-    { label: "In QC Review", value: (inQC[0] as { count: string }).count },
-    { label: "Approved This Month", value: (approvedThisMonth[0] as { count: string }).count },
-    { label: "Present Today", value: (presentToday[0] as { count: string }).count },
+    { label: "In Progress", value: (inProgress[0] as { count: string | number }).count },
+    { label: "In QC Review", value: (inQC[0] as { count: string | number }).count },
+    { label: "Approved This Month", value: (approvedThisMonth[0] as { count: string | number }).count },
+    { label: "Present Today", value: (presentToday[0] as { count: string | number }).count },
   ]
 
   const recentTasks = await sql`
@@ -81,29 +81,63 @@ async function ManagerDashboard({ session }: { session: { name: string } }) {
   )
 }
 
-async function QCDashboard({ session }: { session: { name: string } }) {
-  const pending = await sql`
-    SELECT COUNT(*) FROM tasks WHERE status = 'in_qc_review'
+async function QCDashboard({ session }: { session: { id: string; name: string } }) {
+  const month = new Date().toISOString().slice(0, 7)
+  const [pending, myActive, monthPoints] = await Promise.all([
+    sql`SELECT COUNT(*) FROM tasks WHERE status = 'in_qc_review'`,
+    sql`SELECT COUNT(*) FROM tasks WHERE assigned_to = ${session.id} AND status IN ('assigned', 'in_progress')`,
+    sql`SELECT COALESCE(SUM(points),0) AS total FROM points_log WHERE user_id = ${session.id} AND month = ${month}`,
+  ])
+
+  const stats = [
+    { label: "Pending Review", value: (pending[0] as { count: string | number }).count },
+    { label: "My Active Tasks", value: (myActive[0] as { count: string | number }).count },
+    { label: "Points This Month", value: (monthPoints[0] as { total: string | number }).total },
+  ]
+
+  const myTasks = await sql`
+    SELECT id, readable_id, title, status, priority, deadline
+    FROM tasks
+    WHERE assigned_to = ${session.id} AND status IN ('assigned', 'in_progress', 'revision_requested')
+    ORDER BY
+      CASE status WHEN 'assigned' THEN 0 WHEN 'revision_requested' THEN 1 ELSE 2 END,
+      deadline ASC NULLS LAST
+    LIMIT 6
   `
+
   return (
     <div className="p-6">
-      <h1 className="font-heading text-xl font-semibold">QC Dashboard</h1>
+      <h1 className="font-heading text-xl font-semibold">
+        Hey {session.name.split(" ")[0]}
+      </h1>
       <p className="mt-1 text-sm text-muted-foreground">
-        Welcome, {session.name.split(" ")[0]}.
+        Here&apos;s your work today.
       </p>
-      <div className="mt-6 grid grid-cols-2 gap-4 sm:grid-cols-3">
-        <Card>
-          <CardHeader className="pb-1 pt-4">
-            <CardTitle className="text-xs font-normal text-muted-foreground">
-              Pending Review
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="pb-4">
-            <p className="font-heading text-3xl font-semibold">
-              {(pending[0] as { count: string }).count}
-            </p>
-          </CardContent>
-        </Card>
+      <div className="mt-6 grid grid-cols-3 gap-4">
+        {stats.map((s) => (
+          <Card key={s.label}>
+            <CardHeader className="pb-1 pt-4">
+              <CardTitle className="text-xs font-normal text-muted-foreground">
+                {s.label}
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="pb-4">
+              <p className="font-heading text-3xl font-semibold">{s.value}</p>
+            </CardContent>
+          </Card>
+        ))}
+      </div>
+      <div className="mt-8">
+        <h2 className="mb-3 text-sm font-medium uppercase tracking-wide text-muted-foreground">
+          My Active Work
+        </h2>
+        <div className="overflow-hidden rounded-xl border border-border bg-card">
+          {(myTasks as Task[]).length === 0 ? (
+            <EmptyState message="No active tasks. Pick one from All Tasks." />
+          ) : (
+            <TaskTable tasks={myTasks as Task[]} />
+          )}
+        </div>
       </div>
     </div>
   )
@@ -112,22 +146,24 @@ async function QCDashboard({ session }: { session: { name: string } }) {
 async function DesignerDashboard({ session }: { session: { id: string; name: string } }) {
   const month = new Date().toISOString().slice(0, 7)
   const [myActive, myInQC, monthPoints] = await Promise.all([
-    sql`SELECT COUNT(*) FROM tasks WHERE assigned_to = ${session.id} AND status = 'in_progress'`,
+    sql`SELECT COUNT(*) FROM tasks WHERE assigned_to = ${session.id} AND status IN ('assigned', 'in_progress')`,
     sql`SELECT COUNT(*) FROM tasks WHERE assigned_to = ${session.id} AND status = 'in_qc_review'`,
     sql`SELECT COALESCE(SUM(points),0) AS total FROM points_log WHERE user_id = ${session.id} AND month = ${month}`,
   ])
 
   const stats = [
-    { label: "Active Tasks", value: (myActive[0] as { count: string }).count },
-    { label: "In QC", value: (myInQC[0] as { count: string }).count },
-    { label: "Points This Month", value: (monthPoints[0] as { total: string }).total },
+    { label: "Active Tasks", value: (myActive[0] as { count: string | number }).count },
+    { label: "In QC", value: (myInQC[0] as { count: string | number }).count },
+    { label: "Points This Month", value: (monthPoints[0] as { total: string | number }).total },
   ]
 
   const myTasks = await sql`
     SELECT id, readable_id, title, status, priority, deadline
     FROM tasks
-    WHERE assigned_to = ${session.id} AND status IN ('in_progress', 'revision_requested')
-    ORDER BY deadline ASC NULLS LAST
+    WHERE assigned_to = ${session.id} AND status IN ('assigned', 'in_progress', 'revision_requested')
+    ORDER BY
+      CASE status WHEN 'assigned' THEN 0 WHEN 'revision_requested' THEN 1 ELSE 2 END,
+      deadline ASC NULLS LAST
     LIMIT 6
   `
 

@@ -9,6 +9,7 @@ import {
   Wallet,
   CalendarClock,
   LogOut,
+  SplinePointer,
 } from "lucide-react"
 
 import {
@@ -74,8 +75,16 @@ function getNavItems(roles: string[]): { group: string; items: NavItem[] }[] {
         items: [{ label: "Dashboard", href: "/dashboard", icon: LayoutDashboard }],
       },
       {
-        group: "Work",
-        items: [{ label: "QC Queue", href: "/qc-queue", icon: ShieldCheck }],
+        group: "Tasks",
+        items: [
+          { label: "All Tasks", href: "/tasks", icon: ListTodo },
+          { label: "Create Task", href: "/tasks/new", icon: PlusSquare },
+          { label: "QC Queue", href: "/qc-queue", icon: ShieldCheck },
+        ],
+      },
+      {
+        group: "Earnings",
+        items: [{ label: "Points Log", href: "/points", icon: BarChart2 }],
       },
     ]
   }
@@ -125,19 +134,7 @@ export async function AppSidebar({ session }: { session: SessionUser }) {
       <SidebarHeader className="px-4 py-4">
         <div className="flex items-center gap-2.5">
           <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-primary">
-            <svg
-              className="h-4 w-4 text-primary-foreground"
-              fill="none"
-              viewBox="0 0 24 24"
-              stroke="currentColor"
-              strokeWidth={2}
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                d="M9 7h6m0 10v-3m-3 3h.01M9 17h.01M9 11h.01M12 11h.01M15 11h.01M4 19h16a2 2 0 002-2V7a2 2 0 00-2-2H4a2 2 0 00-2 2v10a2 2 0 002 2z"
-              />
-            </svg>
+            <SplinePointer strokeWidth={1.5} className="text-primary-foreground" size={20} />
           </div>
           <div>
             <p className="font-heading text-sm font-semibold leading-none">

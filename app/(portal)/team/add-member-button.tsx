@@ -70,9 +70,15 @@ export function AddMemberButton() {
             <Label htmlFor="password">Temporary Password *</Label>
             <Input id="password" name="password" type="password" placeholder="••••••••" required disabled={isPending} />
           </div>
-          <div className="flex flex-col gap-1.5">
-            <Label htmlFor="rate_per_point">Rate per Point (₹)</Label>
-            <Input id="rate_per_point" name="rate_per_point" type="number" min={0} placeholder="200" disabled={isPending} />
+          <div className="grid grid-cols-2 gap-3">
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="rate_per_point">Rate per Point (₹)</Label>
+              <Input id="rate_per_point" name="rate_per_point" type="number" min={0} placeholder="200" disabled={isPending} />
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="experience_years">Experience (yrs)</Label>
+              <Input id="experience_years" name="experience_years" type="number" min={0} placeholder="3" disabled={isPending} />
+            </div>
           </div>
           <div className="flex flex-col gap-2">
             <Label>Roles</Label>

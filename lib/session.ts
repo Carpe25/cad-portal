@@ -1,9 +1,11 @@
 import { SignJWT, jwtVerify } from "jose"
 import { cookies } from "next/headers"
 
-const SECRET = new TextEncoder().encode(
-  process.env.SESSION_SECRET ?? "fallback-secret-change-me"
-)
+if (!process.env.SESSION_SECRET) {
+  throw new Error("SESSION_SECRET environment variable is not set")
+}
+
+const SECRET = new TextEncoder().encode(process.env.SESSION_SECRET)
 
 const COOKIE_NAME = "cad_session"
 
