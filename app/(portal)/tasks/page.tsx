@@ -3,6 +3,15 @@ import { getSession } from "@/lib/session"
 import { redirect } from "next/navigation"
 import { sql } from "@/lib/db"
 import { Button } from "@/components/ui/button"
+import { Badge } from "@/components/ui/badge"
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table"
 import { InboxIcon, PlusSquare } from "lucide-react"
 import { STATUS_LABELS, STATUS_COLORS, PRIORITY_COLORS } from "@/lib/task-utils"
 
@@ -49,106 +58,88 @@ function TaskTable({
   useAutoPriority: boolean
 }) {
   return (
-    <div className="overflow-hidden rounded-xl border border-border bg-card">
-      <table className="w-full text-sm">
-        <thead>
-          <tr className="border-b border-border bg-muted/40">
-            <th className="px-4 py-3 text-left font-medium text-muted-foreground">
-              ID
-            </th>
-            <th className="px-4 py-3 text-left font-medium text-muted-foreground">
-              Title
-            </th>
-            <th className="px-4 py-3 text-left font-medium text-muted-foreground">
-              Client
-            </th>
-            {showDesigner && (
-              <th className="px-4 py-3 text-left font-medium text-muted-foreground">
-                Designer
-              </th>
-            )}
-            <th className="px-4 py-3 text-left font-medium text-muted-foreground">
-              Priority
-            </th>
-            <th className="px-4 py-3 text-left font-medium text-muted-foreground">
-              Status
-            </th>
-            <th className="px-4 py-3 text-left font-medium text-muted-foreground">
-              Age
-            </th>
-            <th className="px-4 py-3 text-left font-medium text-muted-foreground">
-              Points
-            </th>
-            <th className="px-4 py-3 text-left font-medium text-muted-foreground">
-              Deadline
-            </th>
-          </tr>
-        </thead>
-        <tbody>
+    <div className="overflow-hidden rounded-xl border border-border bg-card shadow-sm">
+      <Table>
+        <TableHeader className="bg-muted/40">
+          <TableRow>
+            <TableHead>ID</TableHead>
+            <TableHead>Title</TableHead>
+            <TableHead>Client</TableHead>
+            {showDesigner && <TableHead>Designer</TableHead>}
+            <TableHead>Priority</TableHead>
+            <TableHead>Status</TableHead>
+            <TableHead>Age</TableHead>
+            <TableHead>Points</TableHead>
+            <TableHead>Deadline</TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
           {tasks.map((task) => {
             const priority = useAutoPriority
               ? autoPriority(task.created_at)
               : task.priority
             return (
-              <tr
+              <TableRow
                 key={task.id}
-                className="border-b border-border/60 last:border-0 hover:bg-muted/30"
+                className="hover:bg-muted/30"
               >
-                <td className="px-4 py-3 font-mono text-xs text-muted-foreground">
+                <TableCell className="font-mono text-xs text-muted-foreground">
                   <Link
                     href={`/tasks/${task.id}`}
                     className="hover:text-foreground hover:underline"
                   >
                     {task.readable_id}
                   </Link>
-                </td>
-                <td className="px-4 py-3">
+                </TableCell>
+                <TableCell>
                   <Link
                     href={`/tasks/${task.id}`}
                     className="font-medium hover:underline"
                   >
                     {task.title}
                   </Link>
-                </td>
-                <td className="px-4 py-3 text-muted-foreground">
+                </TableCell>
+                <TableCell className="text-muted-foreground">
                   {task.client_name}
-                </td>
+                </TableCell>
                 {showDesigner && (
-                  <td className="px-4 py-3 text-muted-foreground">
+                  <TableCell className="text-muted-foreground">
                     {task.designer_name ?? "—"}
-                  </td>
+                  </TableCell>
                 )}
-                <td className="px-4 py-3">
-                  <span
-                    className={`rounded-full px-2 py-0.5 text-xs font-medium capitalize ${PRIORITY_COLORS[priority] ?? ""}`}
+                <TableCell>
+                  <Badge
+                    variant="outline"
+                    className={`border-transparent capitalize ${PRIORITY_COLORS[priority] ?? ""}`}
                   >
                     {priority}
-                  </span>
-                </td>
-                <td className="px-4 py-3">
-                  <span
-                    className={`rounded-full px-2 py-0.5 text-xs font-medium ${STATUS_COLORS[task.status] ?? ""}`}
+                  </Badge>
+                </TableCell>
+                <TableCell>
+                  <Badge
+                    variant="outline"
+                    className={`border-transparent ${STATUS_COLORS[task.status] ?? ""}`}
                   >
                     {STATUS_LABELS[task.status] ?? task.status}
-                  </span>
-                </td>
-                <td className="px-4 py-3 font-mono text-xs text-muted-foreground">
+                  </Badge>
+                </TableCell>
+                <TableCell className="font-mono text-xs text-muted-foreground">
                   {formatAge(task.created_at)}
-                </td>
-                <td className="px-4 py-3 font-medium">{task.points}</td>
-                <td className="px-4 py-3 text-muted-foreground">
+                </TableCell>
+                <TableCell className="font-medium">{task.points}</TableCell>
+                <TableCell className="text-muted-foreground">
                   {task.deadline
                     ? new Date(task.deadline).toLocaleDateString("en-IN", {
                       day: "numeric",
                       month: "short",
                     })
                     : "—"}
-                </td>
-              </tr>
+                </TableCell>
+              </TableRow>
             )
           })}
-        </tbody>
-      </table>
+        </TableBody>
+      </Table>
     </div>
   )
 }
@@ -281,11 +272,11 @@ export default async function TasksPage() {
 
 function EmptyState({ message }: { message: string }) {
   return (
-    <div className="flex flex-col items-center gap-2 rounded-xl border border-border bg-card py-10 text-center">
-      <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-muted">
+    <div className="flex flex-col items-center gap-3 rounded-xl border border-dashed border-border/60 bg-card py-12 text-center animate-in fade-in duration-500">
+      <div className="flex h-12 w-12 items-center justify-center rounded-full bg-muted/50">
         <InboxIcon className="h-5 w-5 text-muted-foreground" />
       </div>
-      <p className="text-sm text-muted-foreground">{message}</p>
+      <p className="text-sm font-medium text-muted-foreground">{message}</p>
     </div>
   )
 }

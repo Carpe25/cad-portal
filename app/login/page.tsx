@@ -5,7 +5,7 @@ import { loginAction } from "./actions"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { SplinePointer } from "lucide-react"
+import { Loader2, SplinePointer } from "lucide-react"
 
 export default function LoginPage() {
   const [error, setError] = useState<string | null>(null)
@@ -36,7 +36,7 @@ export default function LoginPage() {
         />
 
         <div className="relative">
-          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-white/20 shadow-sm">
+          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-white/20 shadow-sm transition-transform hover:scale-105">
             <SplinePointer
               strokeWidth={1.5}
               className="text-white"
@@ -68,7 +68,7 @@ export default function LoginPage() {
 
       {/* Right form panel */}
       <div className="flex flex-1 items-center justify-center px-6 py-12">
-        <div className="w-full max-w-sm">
+        <div className="w-full max-w-sm animate-in fade-in slide-in-from-bottom-4 duration-500">
           {/* Mobile-only brand */}
           <div className="mb-8 flex items-center gap-3 md:hidden">
             <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-primary">
@@ -108,6 +108,7 @@ export default function LoginPage() {
                 required
                 placeholder="you@carpediam.in"
                 disabled={isPending}
+                className="bg-muted/40 transition-all focus-visible:bg-transparent focus-visible:ring-primary/30"
               />
             </div>
 
@@ -121,27 +122,31 @@ export default function LoginPage() {
                 required
                 placeholder="••••••••"
                 disabled={isPending}
+                className="bg-muted/40 transition-all focus-visible:bg-transparent focus-visible:ring-primary/30"
               />
             </div>
 
             {error && (
-              <div className="rounded-lg border border-destructive/20 bg-destructive/8 px-3.5 py-2.5">
-                <p className="text-sm text-destructive">{error}</p>
+              <div className="animate-in fade-in slide-in-from-top-1 rounded-lg border border-destructive/20 bg-destructive/5 px-3.5 py-2.5">
+                <p className="text-sm font-medium text-destructive">{error}</p>
               </div>
             )}
 
             <Button
               type="submit"
               disabled={isPending}
-              className="mt-1 h-10 w-full"
+              className="mt-1 h-10 w-full font-medium transition-all active:scale-[0.98]"
             >
+              {isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
               {isPending ? "Signing in…" : "Sign in"}
             </Button>
           </form>
 
           <p className="mt-8 text-center text-xs text-muted-foreground">
             Don&apos;t have access?{" "}
-            <span className="text-foreground">Contact your manager.</span>
+            <span className="font-medium text-foreground hover:underline">
+              Contact your manager.
+            </span>
           </p>
         </div>
       </div>
