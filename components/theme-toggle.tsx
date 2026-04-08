@@ -9,10 +9,9 @@ export function ThemeToggle() {
     const { resolvedTheme, setTheme } = useTheme()
     const [mounted, setMounted] = useState(false)
 
-    // useEffect only runs on the client, so now we can safely show the UI
-    // This prevents hydration mismatch errors with next-themes
     useEffect(() => {
-        setMounted(true)
+        const timer = setTimeout(() => setMounted(true), 0)
+        return () => clearTimeout(timer)
     }, [])
 
     if (!mounted) {
