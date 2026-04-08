@@ -45,7 +45,9 @@ function getNavItems(roles: string[]): { group: string; items: NavItem[] }[] {
     return [
       {
         group: "Overview",
-        items: [{ label: "Dashboard", href: "/dashboard", icon: LayoutDashboard }],
+        items: [
+          { label: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
+        ],
       },
       {
         group: "Tasks",
@@ -73,7 +75,9 @@ function getNavItems(roles: string[]): { group: string; items: NavItem[] }[] {
     return [
       {
         group: "Overview",
-        items: [{ label: "Dashboard", href: "/dashboard", icon: LayoutDashboard }],
+        items: [
+          { label: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
+        ],
       },
       {
         group: "Tasks",
@@ -93,7 +97,9 @@ function getNavItems(roles: string[]): { group: string; items: NavItem[] }[] {
   return [
     {
       group: "Overview",
-      items: [{ label: "Dashboard", href: "/dashboard", icon: LayoutDashboard }],
+      items: [
+        { label: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
+      ],
     },
     {
       group: "Work",
@@ -155,7 +161,7 @@ export async function AppSidebar({ session }: { session: SessionUser }) {
             />
           </div>
           <div className="min-w-0">
-            <p className="font-heading truncate text-sm font-semibold leading-none">
+            <p className="truncate font-heading text-sm leading-none font-semibold">
               CAD Portal
             </p>
             <p className="mt-0.5 text-xs text-muted-foreground">Carpe Diam</p>
@@ -219,7 +225,7 @@ export async function AppSidebar({ session }: { session: SessionUser }) {
               </AvatarFallback>
             </Avatar>
             <div className="min-w-0 flex-1">
-              <p className="truncate text-sm font-medium leading-none">
+              <p className="truncate text-sm leading-none font-medium">
                 {session.name}
               </p>
               <span

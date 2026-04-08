@@ -6,7 +6,10 @@ import { getSession } from "@/lib/session"
 
 export async function createTaskAction(formData: FormData) {
   const session = await getSession()
-  if (!session || (!session.roles.includes("manager") && !session.roles.includes("qc"))) {
+  if (
+    !session ||
+    (!session.roles.includes("manager") && !session.roles.includes("qc"))
+  ) {
     return { error: "Unauthorized" }
   }
 

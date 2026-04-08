@@ -25,7 +25,8 @@ export async function addMemberAction(formData: FormData) {
   const rate = parseFloat(rateStr) || 0
   const experience = parseInt(experienceStr) || 0
 
-  const existing = await sql`SELECT id FROM users WHERE email = ${email.toLowerCase()}`
+  const existing =
+    await sql`SELECT id FROM users WHERE email = ${email.toLowerCase()}`
   if (existing.length > 0) {
     return { error: "A user with this email already exists" }
   }

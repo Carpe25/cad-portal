@@ -71,30 +71,31 @@ export function TaskActions({
     !isQC &&
     !isAssignedWorker &&
     !(canWork && isUnassignedTask)
-  ) return null
+  )
+    return null
 
   return (
     <div className="rounded-xl border border-border bg-card p-4">
-      <h2 className="mb-3 text-xs font-medium uppercase tracking-wide text-muted-foreground">
+      <h2 className="mb-3 text-xs font-medium tracking-wide text-muted-foreground uppercase">
         Actions
       </h2>
 
       <div className="flex flex-col gap-3">
-
         {/* Designer/QC: Assign to me */}
-        {task.status === "assigned" && (isAssignedDesigner || (canWork && isUnassignedTask)) && (
-          <div>
-            <p className="mb-2 text-sm text-muted-foreground">
-              This task is waiting for you to accept it.
-            </p>
-            <Button
-              onClick={() => run(() => assignToMeAction(task.id))}
-              disabled={isPending}
-            >
-              {isPending ? "Assigning…" : "Assign to Me & Start"}
-            </Button>
-          </div>
-        )}
+        {task.status === "assigned" &&
+          (isAssignedDesigner || (canWork && isUnassignedTask)) && (
+            <div>
+              <p className="mb-2 text-sm text-muted-foreground">
+                This task is waiting for you to accept it.
+              </p>
+              <Button
+                onClick={() => run(() => assignToMeAction(task.id))}
+                disabled={isPending}
+              >
+                {isPending ? "Assigning…" : "Assign to Me & Start"}
+              </Button>
+            </div>
+          )}
 
         {/* Designer: Submit for QC */}
         {task.status === "in_progress" && isAssignedDesigner && (
@@ -144,67 +145,69 @@ export function TaskActions({
         )}
 
         {/* QC / Manager: Approve or Send Back */}
-        {task.status === "in_qc_review" && (isQC || isManager) && pendingSubmission && (
-          <div className="flex flex-col gap-3">
-            <p className="text-sm text-muted-foreground">
-              Review the submitted CAD and take action.
-            </p>
-            {!showSendBack ? (
-              <div className="flex gap-2">
-                <Button
-                  onClick={() =>
-                    run(() =>
-                      approveSubmissionAction(task.id, pendingSubmission.id)
-                    )
-                  }
-                  disabled={isPending}
-                  className="bg-emerald-600 hover:bg-emerald-700 text-white"
-                >
-                  {isPending ? "Approving…" : "Approve"}
-                </Button>
-                <Button
-                  variant="outline"
-                  onClick={() => setShowSendBack(true)}
-                  disabled={isPending}
-                  className="text-destructive border-destructive/40 hover:bg-destructive/10"
-                >
-                  Send Back
-                </Button>
-              </div>
-            ) : (
-              <div className="flex flex-col gap-2">
-                <Textarea
-                  placeholder="Describe the issues clearly for the designer..."
-                  value={remarks}
-                  onChange={(e) => setRemarks(e.target.value)}
-                  rows={3}
-                  disabled={isPending}
-                />
+        {task.status === "in_qc_review" &&
+          (isQC || isManager) &&
+          pendingSubmission && (
+            <div className="flex flex-col gap-3">
+              <p className="text-sm text-muted-foreground">
+                Review the submitted CAD and take action.
+              </p>
+              {!showSendBack ? (
                 <div className="flex gap-2">
                   <Button
-                    variant="outline"
-                    className="text-destructive border-destructive/40 hover:bg-destructive/10"
                     onClick={() =>
                       run(() =>
-                        sendBackAction(task.id, pendingSubmission.id, remarks)
+                        approveSubmissionAction(task.id, pendingSubmission.id)
                       )
                     }
-                    disabled={isPending || !remarks.trim()}
+                    disabled={isPending}
+                    className="bg-emerald-600 text-white hover:bg-emerald-700"
                   >
-                    {isPending ? "Sending…" : "Send Back with Remarks"}
+                    {isPending ? "Approving…" : "Approve"}
                   </Button>
                   <Button
-                    variant="ghost"
-                    onClick={() => setShowSendBack(false)}
+                    variant="outline"
+                    onClick={() => setShowSendBack(true)}
                     disabled={isPending}
+                    className="border-destructive/40 text-destructive hover:bg-destructive/10"
                   >
-                    Cancel
+                    Send Back
                   </Button>
                 </div>
-              </div>
-            )}
-          </div>
-        )}
+              ) : (
+                <div className="flex flex-col gap-2">
+                  <Textarea
+                    placeholder="Describe the issues clearly for the designer..."
+                    value={remarks}
+                    onChange={(e) => setRemarks(e.target.value)}
+                    rows={3}
+                    disabled={isPending}
+                  />
+                  <div className="flex gap-2">
+                    <Button
+                      variant="outline"
+                      className="border-destructive/40 text-destructive hover:bg-destructive/10"
+                      onClick={() =>
+                        run(() =>
+                          sendBackAction(task.id, pendingSubmission.id, remarks)
+                        )
+                      }
+                      disabled={isPending || !remarks.trim()}
+                    >
+                      {isPending ? "Sending…" : "Send Back with Remarks"}
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      onClick={() => setShowSendBack(false)}
+                      disabled={isPending}
+                    >
+                      Cancel
+                    </Button>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
 
         {/* Manager: Close task */}
         {task.status === "client_ready" && isManager && (

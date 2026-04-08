@@ -1,15 +1,15 @@
 import Link from "next/link"
+import { Suspense } from "react"
 import { getSession } from "@/lib/session"
 import { redirect } from "next/navigation"
 import { sql } from "@/lib/db"
 import { Button } from "@/components/ui/button"
+import { Badge } from "@/components/ui/badge"
+import { Skeleton } from "@/components/ui/skeleton"
+import { STATUS_LABELS, STATUS_COLORS, PRIORITY_COLORS } from "@/lib/task-utils"
 import {
-  STATUS_LABELS,
-  STATUS_COLORS,
-  PRIORITY_COLORS,
-} from "@/lib/task-utils"
-import {
-  InboxIcon,
+  ArrowRight,
+  Clock,
   Timer,
   ShieldCheck,
   CheckCircle2,
@@ -19,6 +19,9 @@ import {
   Zap,
   type LucideIcon,
 } from "lucide-react"
+import { PageHeader } from "@/components/portal/page-header"
+import { StatCard } from "@/components/portal/stat-card"
+import { EmptyState } from "@/components/portal/empty-state"
 
 type Task = {
   id: string
@@ -33,8 +36,9 @@ type Task = {
 type Stat = {
   label: string
   value: string | number
+  note: string
   icon: LucideIcon
-  color: string
+  accent: string
 }
 
 export default async function DashboardPage() {
@@ -43,46 +47,74 @@ export default async function DashboardPage() {
 
   const isManager = session.roles.includes("manager")
   const isQC = session.roles.includes("qc")
+  const roleLabel = isManager ? "Manager" : isQC ? "QC" : "Designer"
+  const firstName = session.name.split(" ")[0] ?? session.name
 
-  if (isManager) return <ManagerDashboard session={session} />
-  if (isQC) return <QCDashboard session={session} />
-  return <DesignerDashboard session={session} />
+  return (
+    <main className="min-h-full">
+      <div className="mx-auto w-full max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
+        <PageHeader
+          roleLabel={roleLabel}
+          title={`Welcome back, ${firstName}`}
+          description={
+            isManager
+              ? "Team overview and active workflows."
+              : "Your work today at a glance."
+          }
+        />
+        <Suspense fallback={<DashboardSkeleton cols={isManager ? 4 : 3} />}>
+          {isManager ? (
+            <ManagerContent />
+          ) : isQC ? (
+            <QCContent session={session} />
+          ) : (
+            <DesignerContent session={session} />
+          )}
+        </Suspense>
+      </div>
+    </main>
+  )
 }
 
-async function ManagerDashboard({ session }: { session: { name: string } }) {
+// --- Manager ---
+async function ManagerContent() {
   const [inProgress, inQC, approvedThisMonth, presentToday] = await Promise.all(
     [
       sql`SELECT COUNT(*) FROM tasks WHERE status = 'in_progress'`,
       sql`SELECT COUNT(*) FROM tasks WHERE status = 'in_qc_review'`,
       sql`SELECT COUNT(*) FROM tasks WHERE status = 'client_ready' AND DATE_TRUNC('month', created_at) = DATE_TRUNC('month', now())`,
       sql`SELECT COUNT(DISTINCT user_id) FROM attendance WHERE date = CURRENT_DATE AND logout_at IS NULL`,
-    ],
+    ]
   )
 
   const stats: Stat[] = [
     {
       label: "In Progress",
       value: (inProgress[0] as { count: string | number }).count,
+      note: "Active work",
       icon: Timer,
-      color: "bg-blue-500/10 text-blue-600 dark:text-blue-400",
+      accent: "text-blue-500",
     },
     {
       label: "In QC Review",
       value: (inQC[0] as { count: string | number }).count,
+      note: "Awaiting review",
       icon: ShieldCheck,
-      color: "bg-amber-500/10 text-amber-600 dark:text-amber-400",
+      accent: "text-amber-500",
     },
     {
       label: "Approved This Month",
       value: (approvedThisMonth[0] as { count: string | number }).count,
+      note: "Delivered to clients",
       icon: CheckCircle2,
-      color: "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400",
+      accent: "text-emerald-500",
     },
     {
       label: "Present Today",
       value: (presentToday[0] as { count: string | number }).count,
+      note: "Currently active",
       icon: Users,
-      color: "bg-primary/10 text-primary",
+      accent: "text-primary",
     },
   ]
 
@@ -96,17 +128,17 @@ async function ManagerDashboard({ session }: { session: { name: string } }) {
   `) as Task[]
 
   return (
-    <DashboardShell
-      greeting={`Welcome back, ${session.name.split(" ")[0]}`}
-      subtitle="Here's the team overview."
-    >
-      <StatsGrid stats={stats} />
-      <RecentTasksSection tasks={recentTasks} showDesigner />
-    </DashboardShell>
+    <DashboardContent
+      stats={stats}
+      tasks={recentTasks}
+      sectionLabel="Recent Tasks"
+      showDesigner
+    />
   )
 }
 
-async function QCDashboard({
+// --- QC ---
+async function QCContent({
   session,
 }: {
   session: { id: string; name: string }
@@ -122,20 +154,23 @@ async function QCDashboard({
     {
       label: "Pending Review",
       value: (pending[0] as { count: string | number }).count,
+      note: "In QC queue",
       icon: Eye,
-      color: "bg-amber-500/10 text-amber-600 dark:text-amber-400",
+      accent: "text-amber-500",
     },
     {
       label: "My Active Tasks",
       value: (myActive[0] as { count: string | number }).count,
+      note: "Assigned to you",
       icon: ListTodo,
-      color: "bg-blue-500/10 text-blue-600 dark:text-blue-400",
+      accent: "text-blue-500",
     },
     {
       label: "Points This Month",
       value: (monthPoints[0] as { total: string | number }).total,
+      note: "Earned this cycle",
       icon: Zap,
-      color: "bg-primary/10 text-primary",
+      accent: "text-primary",
     },
   ]
 
@@ -150,17 +185,16 @@ async function QCDashboard({
   `) as Task[]
 
   return (
-    <DashboardShell
-      greeting={`Hey ${session.name.split(" ")[0]}`}
-      subtitle="Here's your work today."
-    >
-      <StatsGrid stats={stats} />
-      <RecentTasksSection tasks={myTasks} label="My Active Work" />
-    </DashboardShell>
+    <DashboardContent
+      stats={stats}
+      tasks={myTasks}
+      sectionLabel="My Active Work"
+    />
   )
 }
 
-async function DesignerDashboard({
+// --- Designer ---
+async function DesignerContent({
   session,
 }: {
   session: { id: string; name: string }
@@ -176,20 +210,23 @@ async function DesignerDashboard({
     {
       label: "Active Tasks",
       value: (myActive[0] as { count: string | number }).count,
+      note: "Assigned to you",
       icon: ListTodo,
-      color: "bg-blue-500/10 text-blue-600 dark:text-blue-400",
+      accent: "text-blue-500",
     },
     {
       label: "In QC",
       value: (myInQC[0] as { count: string | number }).count,
+      note: "Awaiting review",
       icon: ShieldCheck,
-      color: "bg-amber-500/10 text-amber-600 dark:text-amber-400",
+      accent: "text-amber-500",
     },
     {
       label: "Points This Month",
       value: (monthPoints[0] as { total: string | number }).total,
+      note: "Earned this cycle",
       icon: Zap,
-      color: "bg-primary/10 text-primary",
+      accent: "text-primary",
     },
   ]
 
@@ -204,196 +241,198 @@ async function DesignerDashboard({
   `) as Task[]
 
   return (
-    <DashboardShell
-      greeting={`Hey ${session.name.split(" ")[0]}`}
-      subtitle="Here's your work today."
-    >
-      <StatsGrid stats={stats} />
-      <RecentTasksSection tasks={myTasks} label="Active Work" />
-    </DashboardShell>
+    <DashboardContent
+      stats={stats}
+      tasks={myTasks}
+      sectionLabel="Active Work"
+    />
   )
 }
 
-// ── Shared layout ──────────────────────────────────────────────────────────────
+// --- Shared content layout ---
 
-function DashboardShell({
-  greeting,
-  subtitle,
-  children,
+const STATUS_DOT: Record<string, string> = {
+  assigned: "bg-slate-400",
+  in_progress: "bg-blue-500",
+  in_qc_review: "bg-amber-500",
+  revision_requested: "bg-red-500",
+  client_ready: "bg-emerald-500",
+  closed: "bg-slate-300",
+}
+
+function formatDeadline(deadline: string | null): string {
+  if (!deadline) return "—"
+  return new Date(deadline).toLocaleDateString("en-IN", {
+    day: "numeric",
+    month: "short",
+  })
+}
+
+function DashboardContent({
+  stats,
+  tasks,
+  sectionLabel,
+  showDesigner,
 }: {
-  greeting: string
-  subtitle: string
-  children: React.ReactNode
+  stats: Stat[]
+  tasks: Task[]
+  sectionLabel: string
+  showDesigner?: boolean
 }) {
   return (
-    <div className="p-6">
-      <div className="mb-6">
-        <h1 className="font-heading text-xl font-semibold">{greeting}</h1>
-        <p className="mt-1 text-sm text-muted-foreground">{subtitle}</p>
+    <div className="mt-8 space-y-8">
+      {/* Stats strip */}
+      <div className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-4">
+        {stats.map((s) => (
+          <StatCard key={s.label} {...s} />
+        ))}
       </div>
-      {children}
-    </div>
-  )
-}
 
-function StatsGrid({ stats }: { stats: Stat[] }) {
-  return (
-    <div
-      className={`grid gap-4 ${stats.length === 4 ? "grid-cols-2 sm:grid-cols-4" : "grid-cols-1 sm:grid-cols-3"}`}
-    >
-      {stats.map((s) => (
-        <div
-          key={s.label}
-          className="flex flex-col gap-3 rounded-xl border border-border bg-card p-5 shadow-xs"
-        >
-          <div className="flex items-start justify-between gap-2">
-            <p className="text-xs font-medium text-muted-foreground">
-              {s.label}
-            </p>
+      {/* Recent tasks section */}
+      <section className="space-y-3">
+        <div className="flex items-center justify-between gap-3">
+          <div className="flex items-center gap-2">
+            <h2 className="text-sm font-semibold text-foreground">
+              {sectionLabel}
+            </h2>
+            <span className="inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-muted px-1.5 text-xs font-medium text-muted-foreground">
+              {tasks.length}
+            </span>
+          </div>
+          <Button variant="ghost" size="sm" asChild>
+            <Link href="/tasks">
+              View all
+              <ArrowRight className="ml-1 h-3 w-3" />
+            </Link>
+          </Button>
+        </div>
+
+        {tasks.length === 0 ? (
+          <EmptyState description="No active tasks right now." />
+        ) : (
+          <div className="overflow-hidden rounded-xl border border-border bg-card shadow-xs">
+            {/* Desktop column headers */}
             <div
-              className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg ${s.color}`}
+              className={`hidden items-center gap-4 border-b border-border bg-muted/30 px-4 py-2.5 text-xs font-medium text-muted-foreground lg:grid ${
+                showDesigner
+                  ? "grid-cols-[16px_minmax(0,1fr)_140px_100px_80px_80px]"
+                  : "grid-cols-[16px_minmax(0,1fr)_100px_80px_80px]"
+              }`}
             >
-              <s.icon className="h-4 w-4" />
+              <span />
+              <span>Task</span>
+              {showDesigner && <span>Designer</span>}
+              <span>Priority</span>
+              <span>Status</span>
+              <span className="text-right">Deadline</span>
+            </div>
+
+            <div className="divide-y divide-border">
+              {tasks.map((task) => (
+                <Link
+                  key={task.id}
+                  href={`/tasks/${task.id}`}
+                  className={`group flex items-start gap-3 px-4 py-3.5 transition-colors hover:bg-muted/40 lg:grid lg:items-center lg:gap-4 ${
+                    showDesigner
+                      ? "lg:grid-cols-[16px_minmax(0,1fr)_140px_100px_80px_80px]"
+                      : "lg:grid-cols-[16px_minmax(0,1fr)_100px_80px_80px]"
+                  }`}
+                >
+                  {/* Status dot */}
+                  <div className="mt-1 flex shrink-0 items-center lg:mt-0">
+                    <div
+                      className={`h-2 w-2 rounded-full ${STATUS_DOT[task.status] ?? "bg-slate-300"}`}
+                      title={STATUS_LABELS[task.status]}
+                    />
+                  </div>
+
+                  {/* Title + meta */}
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-sm font-medium text-foreground group-hover:text-primary">
+                      {task.title}
+                    </p>
+                    <div className="mt-0.5 flex items-center gap-1.5 text-xs text-muted-foreground">
+                      <span className="font-mono">{task.readable_id}</span>
+                      {task.deadline && (
+                        <>
+                          <span>·</span>
+                          <Clock className="h-3 w-3" />
+                          <span>{formatDeadline(task.deadline)}</span>
+                        </>
+                      )}
+                      {/* Mobile-only badges */}
+                      <span className="ml-auto flex items-center gap-1.5 lg:hidden">
+                        <Badge
+                          variant="outline"
+                          className={`text-[10px] ${PRIORITY_COLORS[task.priority] ?? ""}`}
+                        >
+                          {task.priority}
+                        </Badge>
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Desktop: designer */}
+                  {showDesigner && (
+                    <span className="hidden truncate text-sm text-muted-foreground lg:block">
+                      {task.designer_name ?? "—"}
+                    </span>
+                  )}
+
+                  {/* Priority badge */}
+                  <div className="hidden lg:block">
+                    <Badge
+                      variant="outline"
+                      className={`text-xs ${PRIORITY_COLORS[task.priority] ?? ""}`}
+                    >
+                      {task.priority}
+                    </Badge>
+                  </div>
+
+                  {/* Status badge */}
+                  <div className="hidden lg:block">
+                    <Badge
+                      variant="outline"
+                      className={`text-xs ${STATUS_COLORS[task.status] ?? ""}`}
+                    >
+                      {STATUS_LABELS[task.status] ?? task.status}
+                    </Badge>
+                  </div>
+
+                  {/* Deadline */}
+                  <span className="hidden text-right text-xs text-muted-foreground tabular-nums lg:block">
+                    {formatDeadline(task.deadline)}
+                  </span>
+                </Link>
+              ))}
             </div>
           </div>
-          <p className="font-heading text-3xl font-bold tracking-tight">
-            {s.value}
-          </p>
-        </div>
-      ))}
-    </div>
-  )
-}
-
-function RecentTasksSection({
-  tasks,
-  label = "Recent Tasks",
-  showDesigner,
-}: {
-  tasks: Task[]
-  label?: string
-  showDesigner?: boolean
-}) {
-  return (
-    <div className="mt-8">
-      <div className="mb-3 flex items-center justify-between">
-        <h2 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-          {label}
-        </h2>
-        <Button variant="ghost" size="sm" asChild>
-          <Link href="/tasks" className="text-xs">
-            View all →
-          </Link>
-        </Button>
-      </div>
-      <div className="overflow-hidden rounded-xl border border-border bg-card shadow-xs">
-        {tasks.length === 0 ? (
-          <EmptyState message="No active tasks right now." />
-        ) : (
-          <TaskTable tasks={tasks} showDesigner={showDesigner} />
         )}
-      </div>
+      </section>
     </div>
   )
 }
 
-function TaskTable({
-  tasks,
-  showDesigner,
-}: {
-  tasks: Task[]
-  showDesigner?: boolean
-}) {
+// --- Skeleton ---
+function DashboardSkeleton({ cols }: { cols: number }) {
   return (
-    <table className="w-full text-sm">
-      <thead>
-        <tr className="border-b border-border bg-muted/40">
-          <th className="px-4 py-2.5 text-left text-xs font-medium text-muted-foreground">
-            ID
-          </th>
-          <th className="px-4 py-2.5 text-left text-xs font-medium text-muted-foreground">
-            Title
-          </th>
-          {showDesigner && (
-            <th className="hidden px-4 py-2.5 text-left text-xs font-medium text-muted-foreground sm:table-cell">
-              Designer
-            </th>
-          )}
-          <th className="px-4 py-2.5 text-left text-xs font-medium text-muted-foreground">
-            Priority
-          </th>
-          <th className="px-4 py-2.5 text-left text-xs font-medium text-muted-foreground">
-            Status
-          </th>
-          <th className="hidden px-4 py-2.5 text-left text-xs font-medium text-muted-foreground sm:table-cell">
-            Deadline
-          </th>
-        </tr>
-      </thead>
-      <tbody>
-        {tasks.map((task) => (
-          <tr
-            key={task.id}
-            className="border-b border-border/60 last:border-0 hover:bg-muted/30"
-          >
-            <td className="px-4 py-3 font-mono text-xs text-muted-foreground">
-              <Link
-                href={`/tasks/${task.id}`}
-                className="hover:text-foreground hover:underline"
-              >
-                {task.readable_id}
-              </Link>
-            </td>
-            <td className="px-4 py-3">
-              <Link
-                href={`/tasks/${task.id}`}
-                className="font-medium hover:underline"
-              >
-                {task.title}
-              </Link>
-            </td>
-            {showDesigner && (
-              <td className="hidden px-4 py-3 text-muted-foreground sm:table-cell">
-                {task.designer_name ?? "—"}
-              </td>
-            )}
-            <td className="px-4 py-3">
-              <span
-                className={`rounded-full px-2 py-0.5 text-xs font-medium capitalize ${PRIORITY_COLORS[task.priority] ?? ""}`}
-              >
-                {task.priority}
-              </span>
-            </td>
-            <td className="px-4 py-3">
-              <span
-                className={`rounded-full px-2 py-0.5 text-xs font-medium ${STATUS_COLORS[task.status] ?? ""}`}
-              >
-                {STATUS_LABELS[task.status] ?? task.status}
-              </span>
-            </td>
-            <td className="hidden px-4 py-3 text-muted-foreground sm:table-cell">
-              {task.deadline
-                ? new Date(task.deadline).toLocaleDateString("en-IN", {
-                    day: "numeric",
-                    month: "short",
-                    year: "numeric",
-                  })
-                : "—"}
-            </td>
-          </tr>
+    <div className="mt-8 space-y-8">
+      <div className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-4">
+        {Array.from({ length: cols }).map((_, i) => (
+          <div key={i} className="rounded-xl border border-border bg-card p-4">
+            <Skeleton className="h-3 w-20" />
+            <Skeleton className="mt-3 h-8 w-12" />
+            <Skeleton className="mt-1.5 h-3 w-16" />
+          </div>
         ))}
-      </tbody>
-    </table>
-  )
-}
-
-function EmptyState({ message }: { message: string }) {
-  return (
-    <div className="flex flex-col items-center gap-2 py-12 text-center">
-      <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-muted">
-        <InboxIcon className="h-5 w-5 text-muted-foreground" />
       </div>
-      <p className="text-sm text-muted-foreground">{message}</p>
+      <div className="space-y-3">
+        <div className="flex items-center gap-2">
+          <Skeleton className="h-4 w-24" />
+          <Skeleton className="h-5 w-6 rounded-full" />
+        </div>
+        <Skeleton className="h-64 w-full rounded-xl" />
+      </div>
     </div>
   )
 }

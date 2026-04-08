@@ -1,6 +1,13 @@
+import { Suspense } from "react"
 import { getSession } from "@/lib/session"
 import { redirect } from "next/navigation"
 import { sql } from "@/lib/db"
+import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
+import { Skeleton } from "@/components/ui/skeleton"
+import { CalendarClock, Wallet } from "lucide-react"
+import { PageHeader } from "@/components/portal/page-header"
+import { StatCard } from "@/components/portal/stat-card"
 
 type PayoutRow = {
   designer_id: string
@@ -18,6 +25,27 @@ export default async function PayoutsPage({
   const session = await getSession()
   if (!session || !session.roles.includes("manager")) redirect("/dashboard")
 
+  return (
+    <main className="min-h-full">
+      <div className="mx-auto w-full max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
+        <PageHeader
+          roleLabel="Manager"
+          title="Payouts"
+          description="Month-end payout summary — points x rate per point."
+        />
+        <Suspense fallback={<PayoutsSkeleton />}>
+          <PayoutsContent searchParams={searchParams} />
+        </Suspense>
+      </div>
+    </main>
+  )
+}
+
+async function PayoutsContent({
+  searchParams,
+}: {
+  searchParams: Promise<{ month?: string }>
+}) {
   const params = await searchParams
   const month = params.month ?? new Date().toISOString().slice(0, 7)
 
@@ -36,81 +64,123 @@ export default async function PayoutsPage({
   `) as PayoutRow[]
 
   const grandTotal = rows.reduce((sum, r) => sum + Number(r.total_inr), 0)
+  const totalPoints = rows.reduce((sum, r) => sum + Number(r.total_points), 0)
 
   return (
-    <div className="p-6">
-      <div className="mb-6 flex flex-wrap items-center justify-between gap-4">
-        <div>
-          <h1 className="font-heading text-xl font-semibold">Payouts</h1>
-          <p className="mt-1 text-sm text-muted-foreground">
-            Month-end payout summary — points × rate per point.
-          </p>
-        </div>
+    <div className="mt-8 space-y-8">
+      {/* Filter bar */}
+      <form className="flex items-center gap-2">
+        <Input
+          type="month"
+          name="month"
+          defaultValue={month}
+          className="w-auto"
+        />
+        <Button type="submit" size="sm">
+          View
+        </Button>
+      </form>
 
-        <form className="flex gap-2">
-          <input
-            type="month"
-            name="month"
-            defaultValue={month}
-            className="h-9 rounded-md border border-input bg-background px-3 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
-          />
-          <button
-            type="submit"
-            className="h-9 rounded-md bg-primary px-4 text-sm font-medium text-primary-foreground hover:bg-primary/90"
-          >
-            View
-          </button>
-        </form>
+      {/* Stats */}
+      <div className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-4">
+        <StatCard
+          label="Month"
+          value={month}
+          note="Selected period"
+          icon={CalendarClock}
+          accent="text-muted-foreground"
+        />
+        <StatCard
+          label="Total Payout"
+          value={`₹${grandTotal.toLocaleString("en-IN")}`}
+          note={`${totalPoints} total points`}
+          icon={Wallet}
+          accent="text-primary"
+        />
       </div>
 
-      {/* Grand total */}
-      <div className="mb-4 inline-flex items-center gap-6 rounded-lg border border-border bg-card px-5 py-3">
-        <div>
-          <p className="text-xs text-muted-foreground">Month</p>
-          <p className="font-medium">{month}</p>
+      {/* Table */}
+      <div className="overflow-hidden rounded-xl border border-border bg-card shadow-xs">
+        {/* Desktop column headers */}
+        <div className="hidden items-center gap-4 border-b border-border bg-muted/30 px-4 py-2.5 text-xs font-medium text-muted-foreground lg:grid lg:grid-cols-[minmax(0,1fr)_100px_100px_120px]">
+          <span>Designer</span>
+          <span className="text-right">Points</span>
+          <span className="text-right">Rate/pt</span>
+          <span className="text-right">Payout</span>
         </div>
-        <div>
-          <p className="text-xs text-muted-foreground">Total Payout</p>
-          <p className="font-heading text-2xl font-semibold">
-            ₹{grandTotal.toLocaleString("en-IN")}
-          </p>
-        </div>
-      </div>
 
-      <div className="overflow-hidden rounded-xl border border-border bg-card">
-        <table className="w-full text-sm">
-          <thead>
-            <tr className="border-b border-border bg-muted/40">
-              <th className="px-4 py-3 text-left font-medium text-muted-foreground">Designer</th>
-              <th className="px-4 py-3 text-right font-medium text-muted-foreground">Points Earned</th>
-              <th className="px-4 py-3 text-right font-medium text-muted-foreground">Rate/pt</th>
-              <th className="px-4 py-3 text-right font-medium text-muted-foreground">Payout</th>
-            </tr>
-          </thead>
-          <tbody>
-            {rows.map((r) => (
-              <tr key={r.designer_id} className="border-b border-border/60 last:border-0">
-                <td className="px-4 py-3 font-medium">{r.designer_name}</td>
-                <td className="px-4 py-3 text-right">{Number(r.total_points)}</td>
-                <td className="px-4 py-3 text-right text-muted-foreground">
-                  ₹{Number(r.rate_per_point).toLocaleString("en-IN")}
-                </td>
-                <td className="px-4 py-3 text-right font-semibold">
-                  ₹{Number(r.total_inr).toLocaleString("en-IN")}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-          <tfoot>
-            <tr className="border-t border-border bg-muted/40">
-              <td className="px-4 py-3 font-semibold" colSpan={3}>Total</td>
-              <td className="px-4 py-3 text-right font-bold">
-                ₹{grandTotal.toLocaleString("en-IN")}
-              </td>
-            </tr>
-          </tfoot>
-        </table>
+        <div className="divide-y divide-border">
+          {rows.map((r) => (
+            <div
+              key={r.designer_id}
+              className="flex items-start gap-3 px-4 py-3.5 transition-colors hover:bg-muted/40 lg:grid lg:grid-cols-[minmax(0,1fr)_100px_100px_120px] lg:items-center lg:gap-4"
+            >
+              {/* Name + mobile meta */}
+              <div className="min-w-0 flex-1">
+                <p className="text-sm font-medium text-foreground">
+                  {r.designer_name}
+                </p>
+                <div className="mt-0.5 flex items-center gap-1.5 text-xs text-muted-foreground lg:hidden">
+                  <span>{Number(r.total_points)} pts</span>
+                  <span>·</span>
+                  <span>
+                    ₹{Number(r.rate_per_point).toLocaleString("en-IN")}/pt
+                  </span>
+                  <span className="ml-auto font-semibold text-foreground">
+                    ₹{Number(r.total_inr).toLocaleString("en-IN")}
+                  </span>
+                </div>
+              </div>
+
+              {/* Points (desktop) */}
+              <span className="hidden text-right text-sm text-foreground lg:block">
+                {Number(r.total_points)}
+              </span>
+
+              {/* Rate (desktop) */}
+              <span className="hidden text-right text-sm text-muted-foreground lg:block">
+                ₹{Number(r.rate_per_point).toLocaleString("en-IN")}
+              </span>
+
+              {/* Payout (desktop) */}
+              <span className="hidden text-right text-sm font-semibold text-foreground lg:block">
+                ₹{Number(r.total_inr).toLocaleString("en-IN")}
+              </span>
+            </div>
+          ))}
+
+          {/* Total row */}
+          <div className="flex items-center gap-4 bg-muted/30 px-4 py-3.5 lg:grid lg:grid-cols-[minmax(0,1fr)_100px_100px_120px]">
+            <span className="text-sm font-semibold text-foreground">Total</span>
+            <span className="hidden lg:block" />
+            <span className="hidden lg:block" />
+            <span className="ml-auto text-sm font-bold text-foreground lg:ml-0 lg:text-right">
+              ₹{grandTotal.toLocaleString("en-IN")}
+            </span>
+          </div>
+        </div>
       </div>
+    </div>
+  )
+}
+
+function PayoutsSkeleton() {
+  return (
+    <div className="mt-8 space-y-8">
+      <div className="flex items-center gap-2">
+        <Skeleton className="h-9 w-36 rounded-md" />
+        <Skeleton className="h-9 w-16 rounded-md" />
+      </div>
+      <div className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-4">
+        {Array.from({ length: 2 }).map((_, i) => (
+          <div key={i} className="rounded-xl border border-border bg-card p-4">
+            <Skeleton className="h-3 w-20" />
+            <Skeleton className="mt-3 h-8 w-12" />
+            <Skeleton className="mt-1.5 h-3 w-16" />
+          </div>
+        ))}
+      </div>
+      <Skeleton className="h-64 w-full rounded-xl" />
     </div>
   )
 }

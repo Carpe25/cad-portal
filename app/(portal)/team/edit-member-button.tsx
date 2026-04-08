@@ -60,7 +60,11 @@ export function EditMemberButton({ member }: { member: Member }) {
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
-        <Button variant="ghost" size="sm" className="h-7 px-2 text-muted-foreground hover:text-foreground">
+        <Button
+          variant="ghost"
+          size="sm"
+          className="h-7 px-2 text-muted-foreground hover:text-foreground"
+        >
           <Pencil className="h-3.5 w-3.5" />
         </Button>
       </DialogTrigger>
@@ -118,7 +122,10 @@ export function EditMemberButton({ member }: { member: Member }) {
             <Label>Roles</Label>
             <div className="flex gap-4">
               {["designer", "qc", "manager"].map((r) => (
-                <label key={r} className="flex cursor-pointer items-center gap-1.5 text-sm capitalize">
+                <label
+                  key={r}
+                  className="flex cursor-pointer items-center gap-1.5 text-sm capitalize"
+                >
                   <Checkbox
                     checked={roles.includes(r)}
                     onCheckedChange={() => toggleRole(r)}
@@ -141,7 +148,12 @@ export function EditMemberButton({ member }: { member: Member }) {
             </label>
           </div>
           <div className="flex flex-col gap-1.5">
-            <Label htmlFor="edit-password">New Password <span className="text-muted-foreground">(leave blank to keep current)</span></Label>
+            <Label htmlFor="edit-password">
+              New Password{" "}
+              <span className="text-muted-foreground">
+                (leave blank to keep current)
+              </span>
+            </Label>
             <Input
               id="edit-password"
               name="new_password"
@@ -159,7 +171,12 @@ export function EditMemberButton({ member }: { member: Member }) {
             <Button type="submit" disabled={isPending}>
               {isPending ? "Saving…" : "Save Changes"}
             </Button>
-            <Button type="button" variant="outline" onClick={() => setOpen(false)} disabled={isPending}>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setOpen(false)}
+              disabled={isPending}
+            >
               Cancel
             </Button>
           </div>

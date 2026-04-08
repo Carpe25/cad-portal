@@ -37,13 +37,9 @@ export default function LoginPage() {
 
         <div className="relative">
           <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-white/20 shadow-sm transition-transform hover:scale-105">
-            <SplinePointer
-              strokeWidth={1.5}
-              className="text-white"
-              size={20}
-            />
+            <SplinePointer strokeWidth={1.5} className="text-white" size={20} />
           </div>
-          <h1 className="font-heading mt-6 text-2xl font-bold text-white">
+          <h1 className="mt-6 font-heading text-2xl font-bold text-white">
             CAD Portal
           </h1>
           <p className="mt-2 text-sm leading-relaxed text-white/70">
@@ -68,7 +64,7 @@ export default function LoginPage() {
 
       {/* Right form panel */}
       <div className="flex flex-1 items-center justify-center px-6 py-12">
-        <div className="w-full max-w-sm animate-in fade-in slide-in-from-bottom-4 duration-500">
+        <div className="w-full max-w-sm animate-in duration-500 fade-in slide-in-from-bottom-4">
           {/* Mobile-only brand */}
           <div className="mb-8 flex items-center gap-3 md:hidden">
             <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-primary">
@@ -79,12 +75,10 @@ export default function LoginPage() {
               />
             </div>
             <div>
-              <p className="font-heading text-base font-semibold leading-none">
+              <p className="font-heading text-base leading-none font-semibold">
                 CAD Portal
               </p>
-              <p className="mt-0.5 text-xs text-muted-foreground">
-                Carpe Diam
-              </p>
+              <p className="mt-0.5 text-xs text-muted-foreground">Carpe Diam</p>
             </div>
           </div>
 
@@ -127,7 +121,7 @@ export default function LoginPage() {
             </div>
 
             {error && (
-              <div className="animate-in fade-in slide-in-from-top-1 rounded-lg border border-destructive/20 bg-destructive/5 px-3.5 py-2.5">
+              <div className="animate-in rounded-lg border border-destructive/20 bg-destructive/5 px-3.5 py-2.5 fade-in slide-in-from-top-1">
                 <p className="text-sm font-medium text-destructive">{error}</p>
               </div>
             )}

@@ -60,31 +60,68 @@ export function AddMemberButton() {
         <form onSubmit={handleSubmit} className="flex flex-col gap-4 pt-2">
           <div className="flex flex-col gap-1.5">
             <Label htmlFor="name">Full Name *</Label>
-            <Input id="name" name="name" placeholder="Priya Sharma" required disabled={isPending} />
+            <Input
+              id="name"
+              name="name"
+              placeholder="Priya Sharma"
+              required
+              disabled={isPending}
+            />
           </div>
           <div className="flex flex-col gap-1.5">
             <Label htmlFor="email">Email *</Label>
-            <Input id="email" name="email" type="email" placeholder="priya@carpediam.com" required disabled={isPending} />
+            <Input
+              id="email"
+              name="email"
+              type="email"
+              placeholder="priya@carpediam.com"
+              required
+              disabled={isPending}
+            />
           </div>
           <div className="flex flex-col gap-1.5">
             <Label htmlFor="password">Temporary Password *</Label>
-            <Input id="password" name="password" type="password" placeholder="••••••••" required disabled={isPending} />
+            <Input
+              id="password"
+              name="password"
+              type="password"
+              placeholder="••••••••"
+              required
+              disabled={isPending}
+            />
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div className="flex flex-col gap-1.5">
               <Label htmlFor="rate_per_point">Rate per Point (₹)</Label>
-              <Input id="rate_per_point" name="rate_per_point" type="number" min={0} placeholder="200" disabled={isPending} />
+              <Input
+                id="rate_per_point"
+                name="rate_per_point"
+                type="number"
+                min={0}
+                placeholder="200"
+                disabled={isPending}
+              />
             </div>
             <div className="flex flex-col gap-1.5">
               <Label htmlFor="experience_years">Experience (yrs)</Label>
-              <Input id="experience_years" name="experience_years" type="number" min={0} placeholder="3" disabled={isPending} />
+              <Input
+                id="experience_years"
+                name="experience_years"
+                type="number"
+                min={0}
+                placeholder="3"
+                disabled={isPending}
+              />
             </div>
           </div>
           <div className="flex flex-col gap-2">
             <Label>Roles</Label>
             <div className="flex gap-4">
               {["designer", "qc", "manager"].map((r) => (
-                <label key={r} className="flex items-center gap-1.5 text-sm capitalize cursor-pointer">
+                <label
+                  key={r}
+                  className="flex cursor-pointer items-center gap-1.5 text-sm capitalize"
+                >
                   <Checkbox
                     checked={roles.includes(r)}
                     onCheckedChange={() => toggleRole(r)}
@@ -104,7 +141,12 @@ export function AddMemberButton() {
             <Button type="submit" disabled={isPending}>
               {isPending ? "Adding…" : "Add Member"}
             </Button>
-            <Button type="button" variant="outline" onClick={() => setOpen(false)} disabled={isPending}>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setOpen(false)}
+              disabled={isPending}
+            >
               Cancel
             </Button>
           </div>

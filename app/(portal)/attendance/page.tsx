@@ -1,6 +1,14 @@
+import { Suspense } from "react"
 import { getSession } from "@/lib/session"
 import { redirect } from "next/navigation"
 import { sql } from "@/lib/db"
+import { Badge } from "@/components/ui/badge"
+import { Button } from "@/components/ui/button"
+import { Skeleton } from "@/components/ui/skeleton"
+import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select"
+import { CalendarClock, Clock } from "lucide-react"
+import { PageHeader } from "@/components/portal/page-header"
+import { EmptyState } from "@/components/portal/empty-state"
 
 type AttendanceRecord = {
   id: string
@@ -19,9 +27,42 @@ export default async function AttendancePage({
   const session = await getSession()
   if (!session) redirect("/login")
 
-  const params = await searchParams
   const isManager = session.roles.includes("manager")
-  const filterUserId = isManager ? (params.user ?? null) : session.id
+  const roleLabel = isManager ? "Manager" : "Designer"
+
+  return (
+    <main className="min-h-full">
+      <div className="mx-auto w-full max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
+        <PageHeader
+          roleLabel={roleLabel}
+          title="Attendance"
+          description={
+            isManager ? "Team attendance log." : "Your attendance history."
+          }
+        />
+        <Suspense fallback={<AttendanceSkeleton />}>
+          <AttendanceContent
+            sessionId={session.id}
+            isManager={isManager}
+            searchParams={searchParams}
+          />
+        </Suspense>
+      </div>
+    </main>
+  )
+}
+
+async function AttendanceContent({
+  sessionId,
+  isManager,
+  searchParams,
+}: {
+  sessionId: string
+  isManager: boolean
+  searchParams: Promise<{ user?: string }>
+}) {
+  const params = await searchParams
+  const filterUserId = isManager ? (params.user ?? null) : sessionId
 
   const records = filterUserId
     ? ((await sql`
@@ -41,115 +82,188 @@ export default async function AttendancePage({
       `) as AttendanceRecord[])
 
   const designers = isManager
-    ? ((await sql`SELECT id, name FROM users WHERE active = true ORDER BY name`) as { id: string; name: string }[])
+    ? ((await sql`SELECT id, name FROM users WHERE active = true ORDER BY name`) as {
+        id: string
+        name: string
+      }[])
     : []
 
-  function formatDuration(mins: number | null) {
-    if (!mins) return "—"
-    const h = Math.floor(mins / 60)
-    const m = mins % 60
-    return h > 0 ? `${h}h ${m}m` : `${m}m`
-  }
-
   return (
-    <div className="p-6">
-      <div className="mb-6 flex flex-wrap items-center justify-between gap-4">
-        <div>
-          <h1 className="font-heading text-xl font-semibold">Attendance</h1>
-          <p className="mt-1 text-sm text-muted-foreground">
-            {isManager ? "Team attendance log." : "Your attendance history."}
-          </p>
-        </div>
+    <div className="mt-8 space-y-8">
+      {/* Filter bar */}
+      {isManager && (
+        <form className="flex items-center gap-2">
+          <NativeSelect name="user" defaultValue={filterUserId ?? ""}>
+            <NativeSelectOption value="">All Members</NativeSelectOption>
+            {designers.map((d) => (
+              <NativeSelectOption key={d.id} value={d.id}>
+                {d.name}
+              </NativeSelectOption>
+            ))}
+          </NativeSelect>
+          <Button type="submit" size="sm">
+            Filter
+          </Button>
+        </form>
+      )}
 
-        {isManager && (
-          <form className="flex gap-2">
-            <select
-              name="user"
-              defaultValue={filterUserId ?? ""}
-              className="h-9 rounded-md border border-input bg-background px-3 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+      {/* Content */}
+      {records.length === 0 ? (
+        <EmptyState
+          icon={CalendarClock}
+          description="No attendance records yet."
+        />
+      ) : (
+        <div className="overflow-hidden rounded-xl border border-border bg-card shadow-xs">
+          {/* Desktop column headers */}
+          <div
+            className={`hidden items-center gap-4 border-b border-border bg-muted/30 px-4 py-2.5 text-xs font-medium text-muted-foreground lg:grid ${
+              isManager
+                ? "grid-cols-[140px_140px_100px_100px_100px_80px]"
+                : "grid-cols-[160px_120px_120px_120px_80px]"
+            }`}
+          >
+            {isManager && <span>Name</span>}
+            <span>Date</span>
+            <span>Clock In</span>
+            <span>Clock Out</span>
+            <span>Duration</span>
+            <span>Status</span>
+          </div>
+
+          <div className="divide-y divide-border">
+            {records.map((r) => (
+              <AttendanceRow key={r.id} record={r} showName={isManager} />
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+function formatDuration(mins: number | null) {
+  if (!mins) return "—"
+  const h = Math.floor(mins / 60)
+  const m = mins % 60
+  return h > 0 ? `${h}h ${m}m` : `${m}m`
+}
+
+function AttendanceRow({
+  record: r,
+  showName,
+}: {
+  record: AttendanceRecord
+  showName: boolean
+}) {
+  return (
+    <div
+      className={`group flex flex-col gap-2 px-4 py-3.5 transition-colors hover:bg-muted/40 lg:grid lg:items-center lg:gap-4 ${
+        showName
+          ? "lg:grid-cols-[140px_140px_100px_100px_100px_80px]"
+          : "lg:grid-cols-[160px_120px_120px_120px_80px]"
+      }`}
+    >
+      {/* Name (manager view) */}
+      {showName && (
+        <span className="text-sm font-medium text-foreground">
+          {r.user_name}
+        </span>
+      )}
+
+      {/* Date */}
+      <div className="flex items-center gap-1.5">
+        <span className="text-sm text-foreground lg:text-sm">
+          {new Date(r.date).toLocaleDateString("en-IN", {
+            weekday: "short",
+            day: "numeric",
+            month: "short",
+          })}
+        </span>
+        {/* Mobile-only status */}
+        <span className="ml-auto lg:hidden">
+          {r.logout_at ? (
+            <Badge variant="outline" className="text-[10px]">
+              Done
+            </Badge>
+          ) : (
+            <Badge
+              variant="outline"
+              className="border-emerald-500/20 bg-emerald-500/10 text-[10px] text-emerald-600 dark:text-emerald-400"
             >
-              <option value="">All Members</option>
-              {designers.map((d) => (
-                <option key={d.id} value={d.id}>
-                  {d.name}
-                </option>
-              ))}
-            </select>
-            <button
-              type="submit"
-              className="h-9 rounded-md bg-primary px-4 text-sm font-medium text-primary-foreground hover:bg-primary/90"
-            >
-              Filter
-            </button>
-          </form>
+              Active
+            </Badge>
+          )}
+        </span>
+      </div>
+
+      {/* Clock In */}
+      <div className="flex items-center gap-1.5 text-xs text-muted-foreground lg:text-sm">
+        <Clock className="h-3 w-3 lg:hidden" />
+        <span>
+          {new Date(r.login_at).toLocaleTimeString("en-IN", {
+            hour: "2-digit",
+            minute: "2-digit",
+          })}
+        </span>
+        <span className="lg:hidden">→</span>
+        <span className="lg:hidden">
+          {r.logout_at
+            ? new Date(r.logout_at).toLocaleTimeString("en-IN", {
+                hour: "2-digit",
+                minute: "2-digit",
+              })
+            : "—"}
+        </span>
+        {r.duration_mins != null && (
+          <span className="ml-auto text-xs font-medium text-foreground lg:hidden">
+            {formatDuration(r.duration_mins)}
+          </span>
         )}
       </div>
 
-      {records.length === 0 ? (
-        <div className="flex flex-col items-center gap-2 rounded-xl border border-border bg-card py-16 text-center">
-          <p className="text-sm text-muted-foreground">No attendance records yet.</p>
-        </div>
-      ) : (
-        <div className="overflow-hidden rounded-xl border border-border bg-card">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b border-border bg-muted/40">
-                {isManager && (
-                  <th className="px-4 py-3 text-left font-medium text-muted-foreground">Name</th>
-                )}
-                <th className="px-4 py-3 text-left font-medium text-muted-foreground">Date</th>
-                <th className="px-4 py-3 text-left font-medium text-muted-foreground">Clock In</th>
-                <th className="px-4 py-3 text-left font-medium text-muted-foreground">Clock Out</th>
-                <th className="px-4 py-3 text-left font-medium text-muted-foreground">Duration</th>
-                <th className="px-4 py-3 text-left font-medium text-muted-foreground">Status</th>
-              </tr>
-            </thead>
-            <tbody>
-              {records.map((r) => (
-                <tr key={r.id} className="border-b border-border/60 last:border-0">
-                  {isManager && (
-                    <td className="px-4 py-3 font-medium">{r.user_name}</td>
-                  )}
-                  <td className="px-4 py-3">
-                    {new Date(r.date).toLocaleDateString("en-IN", {
-                      weekday: "short",
-                      day: "numeric",
-                      month: "short",
-                      year: "numeric",
-                    })}
-                  </td>
-                  <td className="px-4 py-3 text-muted-foreground">
-                    {new Date(r.login_at).toLocaleTimeString("en-IN", {
-                      hour: "2-digit",
-                      minute: "2-digit",
-                    })}
-                  </td>
-                  <td className="px-4 py-3 text-muted-foreground">
-                    {r.logout_at
-                      ? new Date(r.logout_at).toLocaleTimeString("en-IN", {
-                          hour: "2-digit",
-                          minute: "2-digit",
-                        })
-                      : "—"}
-                  </td>
-                  <td className="px-4 py-3">{formatDuration(r.duration_mins)}</td>
-                  <td className="px-4 py-3">
-                    {r.logout_at ? (
-                      <span className="rounded-full bg-secondary px-2 py-0.5 text-xs text-muted-foreground">
-                        Done
-                      </span>
-                    ) : (
-                      <span className="rounded-full bg-emerald-500/10 px-2 py-0.5 text-xs text-emerald-600 dark:text-emerald-400">
-                        Active
-                      </span>
-                    )}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
+      {/* Clock Out (desktop) */}
+      <span className="hidden text-sm text-muted-foreground lg:block">
+        {r.logout_at
+          ? new Date(r.logout_at).toLocaleTimeString("en-IN", {
+              hour: "2-digit",
+              minute: "2-digit",
+            })
+          : "—"}
+      </span>
+
+      {/* Duration (desktop) */}
+      <span className="hidden text-sm text-foreground lg:block">
+        {formatDuration(r.duration_mins)}
+      </span>
+
+      {/* Status (desktop) */}
+      <div className="hidden lg:block">
+        {r.logout_at ? (
+          <Badge variant="outline" className="text-xs">
+            Done
+          </Badge>
+        ) : (
+          <Badge
+            variant="outline"
+            className="border-emerald-500/20 bg-emerald-500/10 text-xs text-emerald-600 dark:text-emerald-400"
+          >
+            Active
+          </Badge>
+        )}
+      </div>
+    </div>
+  )
+}
+
+function AttendanceSkeleton() {
+  return (
+    <div className="mt-8 space-y-8">
+      <div className="flex items-center gap-2">
+        <Skeleton className="h-9 w-40 rounded-md" />
+        <Skeleton className="h-9 w-16 rounded-md" />
+      </div>
+      <Skeleton className="h-80 w-full rounded-xl" />
     </div>
   )
 }

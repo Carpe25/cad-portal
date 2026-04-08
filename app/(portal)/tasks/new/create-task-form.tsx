@@ -129,7 +129,11 @@ export function CreateTaskForm({
           {/* Assign to Designer */}
           <div className="flex flex-col gap-1.5">
             <Label>Assign to Designer</Label>
-            <Select value={assignedTo} onValueChange={setAssignedTo} disabled={isPending}>
+            <Select
+              value={assignedTo}
+              onValueChange={setAssignedTo}
+              disabled={isPending}
+            >
               <SelectTrigger>
                 <SelectValue placeholder="Select a designer…" />
               </SelectTrigger>

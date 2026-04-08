@@ -8,7 +8,8 @@ import { getSession } from "@/lib/session"
 export async function assignToMeAction(taskId: string) {
   const session = await getSession()
   if (!session) return { error: "Unauthorized" }
-  const canWork = session.roles.includes("designer") || session.roles.includes("qc")
+  const canWork =
+    session.roles.includes("designer") || session.roles.includes("qc")
   if (!canWork) return { error: "Unauthorized" }
 
   // Only allow claiming if the task is unassigned or pre-assigned to this user
@@ -63,7 +64,10 @@ export async function approveSubmissionAction(
   submissionId: string
 ) {
   const session = await getSession()
-  if (!session || (!session.roles.includes("qc") && !session.roles.includes("manager"))) {
+  if (
+    !session ||
+    (!session.roles.includes("qc") && !session.roles.includes("manager"))
+  ) {
     return { error: "Unauthorized" }
   }
 
@@ -108,7 +112,10 @@ export async function sendBackAction(
   remarks: string
 ) {
   const session = await getSession()
-  if (!session || (!session.roles.includes("qc") && !session.roles.includes("manager"))) {
+  if (
+    !session ||
+    (!session.roles.includes("qc") && !session.roles.includes("manager"))
+  ) {
     return { error: "Unauthorized" }
   }
 
@@ -131,7 +138,8 @@ export async function sendBackAction(
 
 export async function closeTaskAction(taskId: string) {
   const session = await getSession()
-  if (!session || !session.roles.includes("manager")) return { error: "Unauthorized" }
+  if (!session || !session.roles.includes("manager"))
+    return { error: "Unauthorized" }
 
   await sql`UPDATE tasks SET status = 'closed' WHERE id = ${taskId}`
   revalidatePath(`/tasks/${taskId}`)
@@ -145,7 +153,8 @@ export async function reopenForClientRevisionAction(
   newDesignerId: string | null
 ) {
   const session = await getSession()
-  if (!session || !session.roles.includes("manager")) return { error: "Unauthorized" }
+  if (!session || !session.roles.includes("manager"))
+    return { error: "Unauthorized" }
 
   await sql`
     UPDATE tasks
