@@ -70,113 +70,115 @@ export default function UserSettingsForm({ user }: { user: User }) {
         })
     }
 
-    return (
-        <div className="mx-auto max-w-2xl px-4 py-8">
-            <div className="mb-8">
-                <h1 className="text-2xl font-bold tracking-tight">Account Settings</h1>
-                <p className="text-muted-foreground">
-                    Manage your account profile and security.
-                </p>
+  return (
+    <div className="mt-8 max-w-2xl">
+      <div className="overflow-hidden rounded-xl border border-border bg-card shadow-xs">
+        <form onSubmit={handleSubmit} className="flex flex-col divide-y divide-border">
+          {/* Profile Section */}
+          <div className="space-y-4 p-6">
+            <div>
+              <h2 className="text-sm font-semibold text-foreground">
+                Profile Information
+              </h2>
+              <p className="mt-0.5 text-sm text-muted-foreground">
+                Update your display name and email address.
+              </p>
             </div>
 
-            <div className="rounded-lg border bg-card p-6 shadow-sm">
-                <form onSubmit={handleSubmit} className="flex flex-col gap-6">
-                    {/* Profile Section */}
-                    <div className="space-y-4">
-                        <h2 className="text-lg font-semibold">Profile Information</h2>
-
-                        <div className="flex flex-col gap-1.5">
-                            <Label htmlFor="edit-name">Full Name *</Label>
-                            <Input
-                                id="edit-name"
-                                name="name"
-                                defaultValue={user.name}
-                                required
-                                disabled={isPending}
-                            />
-                        </div>
-
-                        <div className="flex flex-col gap-1.5">
-                            <Label htmlFor="edit-email">Email Address *</Label>
-                            <Input
-                                id="edit-email"
-                                name="email"
-                                type="email"
-                                defaultValue={user.email}
-                                required
-                                disabled={isPending}
-                            />
-                        </div>
-                    </div>
-
-                    <hr className="border-border" />
-
-                    {/* Security Section */}
-                    <div className="space-y-4">
-                        <div>
-                            <h2 className="text-lg font-semibold">Change Password</h2>
-                            <p className="text-sm text-muted-foreground">
-                                Leave these fields blank if you do not wish to change your password.
-                            </p>
-                        </div>
-
-                        <div className="flex flex-col gap-1.5">
-                            <Label htmlFor="current-password">Current Password</Label>
-                            <PasswordInput
-                                id="current-password"
-                                name="current_password"
-                                placeholder="••••••••"
-                                disabled={isPending}
-                            />
-                        </div>
-
-                        <div className="flex flex-col gap-1.5">
-                            <Label htmlFor="new-password">New Password</Label>
-                            <PasswordInput
-                                id="new-password"
-                                name="new_password"
-                                placeholder="••••••••"
-                                disabled={isPending}
-                            />
-                        </div>
-                        <div className="flex flex-col gap-1.5">
-                            <Label htmlFor="confirm-password">Confirm New Password</Label>
-                            <PasswordInput
-                                id="confirm-password"
-                                name="confirm_password"
-                                placeholder="••••••••"
-                                disabled={isPending}
-                            />
-                        </div>
-                    </div>
-                    {/* Messages */}
-                    {error && (
-                        <p className="rounded-md bg-destructive/10 px-3 py-2 text-sm font-medium text-destructive">
-                            {error}
-                        </p>
-                    )}
-                    {success && (
-                        <p className="rounded-md bg-emerald-500/10 px-3 py-2 text-sm font-medium text-emerald-600 dark:text-emerald-400">
-                            {success}
-                        </p>
-                    )}
-
-                    {/* Actions */}
-                    <div className="flex gap-3 pt-2">
-                        <Button type="submit" disabled={isPending}>
-                            {isPending ? "Saving Changes…" : "Save Changes"}
-                        </Button>
-                        <Button
-                            type="button"
-                            variant="outline"
-                            disabled={isPending}
-                            onClick={() => router.back()}
-                        >
-                            Cancel
-                        </Button>
-                    </div>
-                </form>
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="edit-name">Full Name</Label>
+              <Input
+                id="edit-name"
+                name="name"
+                defaultValue={user.name}
+                required
+                disabled={isPending}
+              />
             </div>
-        </div>
-    )
+
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="edit-email">Email Address</Label>
+              <Input
+                id="edit-email"
+                name="email"
+                type="email"
+                defaultValue={user.email}
+                required
+                disabled={isPending}
+              />
+            </div>
+          </div>
+
+          {/* Security Section */}
+          <div className="space-y-4 p-6">
+            <div>
+              <h2 className="text-sm font-semibold text-foreground">
+                Change Password
+              </h2>
+              <p className="mt-0.5 text-sm text-muted-foreground">
+                Leave these fields blank to keep your current password.
+              </p>
+            </div>
+
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="current-password">Current Password</Label>
+              <PasswordInput
+                id="current-password"
+                name="current_password"
+                placeholder="••••••••"
+                disabled={isPending}
+              />
+            </div>
+
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="new-password">New Password</Label>
+              <PasswordInput
+                id="new-password"
+                name="new_password"
+                placeholder="••••••••"
+                disabled={isPending}
+              />
+            </div>
+
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="confirm-password">Confirm New Password</Label>
+              <PasswordInput
+                id="confirm-password"
+                name="confirm_password"
+                placeholder="••••••••"
+                disabled={isPending}
+              />
+            </div>
+          </div>
+
+          {/* Footer: messages + actions */}
+          <div className="flex flex-col gap-3 bg-muted/30 px-6 py-4">
+            {error && (
+              <p className="rounded-lg bg-destructive/10 px-3 py-2 text-sm font-medium text-destructive">
+                {error}
+              </p>
+            )}
+            {success && (
+              <p className="rounded-lg bg-emerald-500/10 px-3 py-2 text-sm font-medium text-emerald-600 dark:text-emerald-400">
+                {success}
+              </p>
+            )}
+            <div className="flex gap-3">
+              <Button type="submit" disabled={isPending}>
+                {isPending ? "Saving…" : "Save Changes"}
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                disabled={isPending}
+                onClick={() => router.back()}
+              >
+                Cancel
+              </Button>
+            </div>
+          </div>
+        </form>
+      </div>
+    </div>
+  )
 }
