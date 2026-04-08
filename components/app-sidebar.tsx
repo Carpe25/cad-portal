@@ -169,7 +169,7 @@ export async function AppSidebar({ session }: { session: SessionUser }) {
         </div>
       </SidebarHeader>
 
-      <SidebarSeparator />
+      <SidebarSeparator className="mx-auto" />
 
       {/* Navigation */}
       <SidebarContent className="px-2 py-2">
@@ -215,7 +215,7 @@ export async function AppSidebar({ session }: { session: SessionUser }) {
           attendanceId={todayAttendance?.id}
         />
 
-        <SidebarSeparator className="my-2" />
+        <SidebarSeparator className="mx-auto" />
 
         <TooltipProvider delayDuration={300}>
           <div className="flex items-center gap-2.5">

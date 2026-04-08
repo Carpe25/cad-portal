@@ -23,7 +23,7 @@ export default async function PortalLayout({
       <SidebarInset>
         <header className="flex h-13 shrink-0 items-center gap-2 border-b border-border bg-card/60 px-4 backdrop-blur-sm">
           <SidebarTrigger className="-ml-1" />
-          <Separator orientation="vertical" className="mr-2 h-4" />
+          <Separator orientation="vertical" className="mr-2 h-full" />
           <NavBreadcrumb />
         </header>
         <div className="flex flex-1 flex-col">{children}</div>
