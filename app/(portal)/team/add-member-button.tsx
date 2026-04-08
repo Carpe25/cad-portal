@@ -15,6 +15,7 @@ import {
 import { Checkbox } from "@/components/ui/checkbox"
 import { addMemberAction } from "./actions"
 import { UserPlus } from "lucide-react"
+import { PasswordInput } from "@/components/password-input"
 
 export function AddMemberButton() {
   const [open, setOpen] = useState(false)
@@ -81,10 +82,9 @@ export function AddMemberButton() {
           </div>
           <div className="flex flex-col gap-1.5">
             <Label htmlFor="password">Temporary Password *</Label>
-            <Input
+            <PasswordInput
               id="password"
               name="password"
-              type="password"
               placeholder="••••••••"
               required
               disabled={isPending}

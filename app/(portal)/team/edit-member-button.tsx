@@ -15,6 +15,7 @@ import {
 import { Checkbox } from "@/components/ui/checkbox"
 import { editMemberAction } from "./actions"
 import { Pencil } from "lucide-react"
+import { PasswordInput } from "@/components/password-input"
 
 type Member = {
   id: string
@@ -154,10 +155,9 @@ export function EditMemberButton({ member }: { member: Member }) {
                 (leave blank to keep current)
               </span>
             </Label>
-            <Input
+            <PasswordInput
               id="edit-password"
               name="new_password"
-              type="password"
               placeholder="••••••••"
               disabled={isPending}
             />

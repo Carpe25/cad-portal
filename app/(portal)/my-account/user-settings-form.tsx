@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { updateUserSettingsAction } from "./actions"
+import { PasswordInput } from "@/components/password-input"
 
 type User = {
     id: string
@@ -121,10 +122,9 @@ export default function UserSettingsForm({ user }: { user: User }) {
 
                         <div className="flex flex-col gap-1.5">
                             <Label htmlFor="current-password">Current Password</Label>
-                            <Input
+                            <PasswordInput
                                 id="current-password"
                                 name="current_password"
-                                type="password"
                                 placeholder="••••••••"
                                 disabled={isPending}
                             />
@@ -132,20 +132,18 @@ export default function UserSettingsForm({ user }: { user: User }) {
 
                         <div className="flex flex-col gap-1.5">
                             <Label htmlFor="new-password">New Password</Label>
-                            <Input
+                            <PasswordInput
                                 id="new-password"
                                 name="new_password"
-                                type="password"
                                 placeholder="••••••••"
                                 disabled={isPending}
                             />
                         </div>
                         <div className="flex flex-col gap-1.5">
                             <Label htmlFor="confirm-password">Confirm New Password</Label>
-                            <Input
+                            <PasswordInput
                                 id="confirm-password"
                                 name="confirm_password"
-                                type="password"
                                 placeholder="••••••••"
                                 disabled={isPending}
                             />

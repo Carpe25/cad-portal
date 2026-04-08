@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Loader2, SplinePointer } from "lucide-react"
+import { PasswordInput } from "@/components/password-input"
 
 export default function LoginPage() {
   const [error, setError] = useState<string | null>(null)
@@ -108,13 +109,11 @@ export default function LoginPage() {
 
             <div className="flex flex-col gap-1.5">
               <Label htmlFor="password">Password</Label>
-              <Input
+              <PasswordInput
                 id="password"
                 name="password"
-                type="password"
-                autoComplete="current-password"
-                required
                 placeholder="••••••••"
+                required
                 disabled={isPending}
                 className="bg-muted/40 transition-all focus-visible:bg-transparent focus-visible:ring-primary/30"
               />
