@@ -87,28 +87,30 @@ export function CreateTaskForm({
           </div>
 
           {/* Points */}
-          <div className="flex flex-col gap-1.5">
-            <Label htmlFor="points">Points *</Label>
-            <Input
-              id="points"
-              name="points"
-              type="number"
-              min={1}
-              placeholder="e.g. 10"
-              required
-              disabled={isPending}
-            />
-          </div>
+          <div className="grid grid-cols-2 gap-4">
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="points">Points *</Label>
+              <Input
+                id="points"
+                name="points"
+                type="number"
+                min={1}
+                placeholder="e.g. 10"
+                required
+                disabled={isPending}
+              />
+            </div>
 
-          {/* Deadline */}
-          <div className="flex flex-col gap-1.5">
-            <Label htmlFor="deadline">Deadline</Label>
-            <Input
-              id="deadline"
-              name="deadline"
-              type="date"
-              disabled={isPending}
-            />
+            {/* Deadline */}
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="deadline">Deadline</Label>
+              <Input
+                id="deadline"
+                name="deadline"
+                type="date"
+                disabled={isPending}
+              />
+            </div>
           </div>
 
           {/* Drive Folder Link */}
