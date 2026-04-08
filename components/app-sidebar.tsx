@@ -9,6 +9,7 @@ import {
   Wallet,
   CalendarClock,
   SplinePointer,
+  Settings,
 } from "lucide-react"
 
 import {
@@ -68,6 +69,10 @@ function getNavItems(roles: string[]): { group: string; items: NavItem[] }[] {
           { label: "Payouts", href: "/payouts", icon: Wallet },
         ],
       },
+      {
+        group: "Settings",
+        items: [{ label: "My Account", href: "/my-account", icon: Settings }],
+      }
     ]
   }
 
@@ -91,6 +96,10 @@ function getNavItems(roles: string[]): { group: string; items: NavItem[] }[] {
         group: "Earnings",
         items: [{ label: "Points Log", href: "/points", icon: BarChart2 }],
       },
+      {
+        group: "Settings",
+        items: [{ label: "My Account", href: "/my-account", icon: Settings }],
+      }
     ]
   }
 
@@ -109,6 +118,10 @@ function getNavItems(roles: string[]): { group: string; items: NavItem[] }[] {
       group: "Earnings",
       items: [{ label: "Points Log", href: "/points", icon: BarChart2 }],
     },
+    {
+      group: "Settings",
+      items: [{ label: "My Account", href: "/my-account", icon: Settings }],
+    }
   ]
 }
 
