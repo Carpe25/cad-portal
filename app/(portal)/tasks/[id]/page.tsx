@@ -9,7 +9,9 @@ import {
   STATUS_LABELS_FULL as STATUS_LABELS,
   STATUS_COLORS,
   PRIORITY_COLORS,
+  labelBadgeClass,
 } from "@/lib/task-utils"
+import { ParsedTrelloCard } from "@/lib/trello-types"
 import { PageHeader } from "@/components/portal/page-header"
 
 type Task = {
@@ -30,6 +32,7 @@ type Task = {
   created_by: string
   manager_name: string
   created_at: string
+  trello_data: ParsedTrelloCard | null
 }
 
 type Submission = {
@@ -81,6 +84,7 @@ export default async function TaskDetailPage({
 
   if (!taskRows.length) notFound()
   const task = taskRows[0] as Task
+  const trelloData = task.trello_data
 
   const submissions = (await sql`
     SELECT
@@ -203,6 +207,244 @@ export default async function TaskDetailPage({
                     <p className="mt-1 text-sm text-foreground">
                       {task.revision_notes}
                     </p>
+                  </div>
+                </>
+              )}
+              {trelloData && (
+                <>
+                  <Separator className="my-4" />
+                  <div className="flex flex-col gap-4">
+                    <h4 className="text-sm font-semibold text-muted-foreground tracking-wide uppercase">
+                      Trello Card Details
+                    </h4>
+
+                    {/* Board + List */}
+                    <div className="grid grid-cols-2 gap-4">
+                      {trelloData.boardName && (
+                        <div className="flex flex-col gap-1.5">
+                          <span className="text-xs text-muted-foreground">Board</span>
+                          <p className="text-sm font-medium">{trelloData.boardName}</p>
+                        </div>
+                      )}
+                      {trelloData.listName && (
+                        <div className="flex flex-col gap-1.5">
+                          <span className="text-xs text-muted-foreground">Current List</span>
+                          <p className="text-sm font-medium">{trelloData.listName}</p>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Status */}
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="flex flex-col gap-1.5">
+                        <span className="text-xs text-muted-foreground">Card Status</span>
+                        <div className="flex items-center gap-2">
+                          <Badge
+                            variant="secondary"
+                            className={
+                              trelloData.closed
+                                ? "bg-zinc-500/15 text-zinc-600"
+                                : "bg-emerald-500/15 text-emerald-700 dark:text-emerald-400"
+                            }
+                          >
+                            {trelloData.closed ? "Archived" : "Open"}
+                          </Badge>
+                          {trelloData.dueComplete && (
+                            <Badge
+                              variant="secondary"
+                              className="bg-emerald-500/15 text-emerald-700 dark:text-emerald-400"
+                            >
+                              Due Complete
+                            </Badge>
+                          )}
+                        </div>
+                      </div>
+                      {trelloData.dateLastActivity && (
+                        <div className="flex flex-col gap-1.5">
+                          <span className="text-xs text-muted-foreground">Last Activity</span>
+                          <p className="text-sm">
+                            {new Date(trelloData.dateLastActivity).toLocaleDateString("en-US", {
+                              year: "numeric",
+                              month: "short",
+                              day: "numeric",
+                              hour: "2-digit",
+                              minute: "2-digit",
+                            })}
+                          </p>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Labels */}
+                    {trelloData.labels.length > 0 && (
+                      <div className="flex flex-col gap-1.5">
+                        <span className="text-xs text-muted-foreground">Labels</span>
+                        <div className="flex flex-wrap gap-1.5">
+                          {trelloData.labels.map((label) => (
+                            <Badge
+                              key={label.id}
+                              variant="secondary"
+                              className={labelBadgeClass(label.color)}
+                            >
+                              {label.name}
+                            </Badge>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Members */}
+                    {trelloData.members.length > 0 && (
+                      <div className="flex flex-col gap-1.5">
+                        <span className="text-xs text-muted-foreground">Members</span>
+                        <div className="flex flex-wrap gap-2">
+                          {trelloData.members.map((m) => (
+                            <div
+                              key={m.id}
+                              className="flex items-center gap-1.5 rounded-md bg-muted px-2 py-1 text-xs"
+                            >
+                              <div className="h-5 w-5 rounded-full bg-primary/20 flex items-center justify-center text-[10px] font-semibold text-primary">
+                                {m.fullName
+                                  .split(" ")
+                                  .map((n) => n[0])
+                                  .join("")
+                                  .slice(0, 2)
+                                  .toUpperCase()}
+                              </div>
+                              <span>{m.fullName}</span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Custom Fields */}
+                    {trelloData.customFields.length > 0 && (
+                      <div className="flex flex-col gap-1.5">
+                        <span className="text-xs text-muted-foreground">Custom Fields</span>
+                        <div className="grid grid-cols-2 gap-3">
+                          {trelloData.customFields.map((cf) => (
+                            <div
+                              key={cf.id}
+                              className="rounded-md border bg-muted/30 px-3 py-2"
+                            >
+                              <p className="text-xs text-muted-foreground font-medium">
+                                {cf.fieldName}
+                              </p>
+                              <p className="text-sm mt-0.5">{cf.value || "—"}</p>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Checklists */}
+                    {trelloData.checklists.length > 0 && (
+                      <div className="flex flex-col gap-2">
+                        <span className="text-xs text-muted-foreground">Checklists</span>
+                        {trelloData.checklists.map((cl) => (
+                          <div
+                            key={cl.id}
+                            className="rounded-md border bg-muted/30 px-3 py-2"
+                          >
+                            <p className="text-xs font-semibold mb-1.5">{cl.name}</p>
+                            <ul className="space-y-1">
+                              {cl.checkItems.map((ci) => (
+                                <li key={ci.id} className="flex items-center gap-2 text-xs">
+                                  <span
+                                    className={`inline-flex h-3.5 w-3.5 shrink-0 items-center justify-center rounded border ${
+                                      ci.state === "complete"
+                                        ? "bg-emerald-500 border-emerald-500 text-white"
+                                        : "border-muted-foreground/30"
+                                    }`}
+                                  >
+                                    {ci.state === "complete" && (
+                                      <svg
+                                        className="h-2.5 w-2.5"
+                                        fill="none"
+                                        viewBox="0 0 24 24"
+                                        strokeWidth={3}
+                                        stroke="currentColor"
+                                      >
+                                        <path
+                                          strokeLinecap="round"
+                                          strokeLinejoin="round"
+                                          d="M4.5 12.75l6 6 9-13.5"
+                                        />
+                                      </svg>
+                                    )}
+                                  </span>
+                                  <span
+                                    className={
+                                      ci.state === "complete"
+                                        ? "line-through text-muted-foreground"
+                                        : ""
+                                    }
+                                  >
+                                    {ci.name}
+                                  </span>
+                                </li>
+                              ))}
+                            </ul>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+
+                    {/* Attachments */}
+                    {trelloData.attachments.length > 0 && (
+                      <div className="flex flex-col gap-1.5">
+                        <span className="text-xs text-muted-foreground">
+                          Attachments ({trelloData.attachments.length})
+                        </span>
+                        <div className="space-y-1.5">
+                          {trelloData.attachments.map((att) => (
+                            <a
+                              key={att.id}
+                              href={att.url}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="flex items-center gap-2 rounded-md border bg-muted/30 px-3 py-2 text-xs hover:bg-muted/60 transition-colors"
+                            >
+                              <svg
+                                className="h-4 w-4 text-muted-foreground shrink-0"
+                                fill="none"
+                                viewBox="0 0 24 24"
+                                strokeWidth={1.5}
+                                stroke="currentColor"
+                              >
+                                <path
+                                  strokeLinecap="round"
+                                  strokeLinejoin="round"
+                                  d="M18.375 12.739l-7.693 7.693a4.5 4.5 0 01-6.364-6.364l10.94-10.94A3 3 0 1119.5 7.372L8.552 18.32m.009-.01l-.01.01m5.699-9.941l-7.81 7.81a1.5 1.5 0 002.112 2.13"
+                                />
+                              </svg>
+                              <span className="truncate text-primary font-medium">
+                                {att.name}
+                              </span>
+                              <span className="ml-auto text-muted-foreground shrink-0">
+                                {new Date(att.date).toLocaleDateString()}
+                              </span>
+                            </a>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Trello Link */}
+                    {trelloData.url && (
+                      <div className="flex flex-col gap-1.5">
+                        <span className="text-xs text-muted-foreground">Trello Card Link</span>
+                        <a
+                          href={trelloData.url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-sm text-primary hover:underline truncate"
+                        >
+                          {trelloData.url}
+                        </a>
+                      </div>
+                    )}
                   </div>
                 </>
               )}

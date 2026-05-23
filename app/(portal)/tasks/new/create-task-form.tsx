@@ -20,64 +20,21 @@ import { Separator } from "@/components/ui/separator"
 /* ------------------------------------------------------------------ */
 /*  Types for the parsed Trello card data                              */
 /* ------------------------------------------------------------------ */
-interface TrelloLabel {
-  id: string
-  name: string
-  color: string
-}
+import {
+  TrelloLabel,
+  TrelloMember,
+  TrelloCheckItem,
+  TrelloChecklist,
+  TrelloCustomField,
+  TrelloAttachment,
+  ParsedTrelloCard
+} from "@/lib/trello-types"
 
-interface TrelloMember {
-  id: string
-  fullName: string
-  username: string
-  avatarUrl?: string | null
-}
-
-interface TrelloCheckItem {
-  id: string
-  name: string
-  state: string
-}
-
-interface TrelloChecklist {
-  id: string
-  name: string
-  checkItems: TrelloCheckItem[]
-}
-
-interface TrelloCustomField {
-  id: string
-  fieldName: string
-  fieldType: string
-  value: string | null
-}
-
-interface TrelloAttachment {
-  id: string
-  name: string
-  url: string
-  date: string
-}
-
-interface ParsedTrelloCard {
-  id: string
-  name: string
-  desc: string
-  due: string | null
-  dueComplete: boolean
-  dateLastActivity: string | null
-  closed: boolean
-  url: string
-  shortUrl: string
-  labels: TrelloLabel[]
-  boardName: string | null
-  listName: string | null
-  members: TrelloMember[]
-  checklists: TrelloChecklist[]
-  customFields: TrelloCustomField[]
-  attachments: TrelloAttachment[]
-}
-
+// interface TrelloLabel {
+//   id: string
+//   name: string
+//   color: string
+// }
 /* ------------------------------------------------------------------ */
 /*  Parser: Trello JSON → ParsedTrelloCard                             */
 /* ------------------------------------------------------------------ */
@@ -245,6 +202,8 @@ export function CreateTaskForm({
   const [trelloData, setTrelloData] = useState<ParsedTrelloCard | null>(null)
   const [importError, setImportError] = useState<string | null>(null)
   const [isDragging, setIsDragging] = useState(false)
+  const [isExtracting, setIsExtracting] = useState(false)
+  const [extractionStep, setExtractionStep] = useState(0)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   /* ---------- Form field state (populated from Trello or manual) ---- */
@@ -255,51 +214,91 @@ export function CreateTaskForm({
   const [styleRef, setStyleRef] = useState("")
   const [points, setPoints] = useState("")
   const [driveLink, setDriveLink] = useState("")
+  const [priority, setPriority] = useState("medium")
 
   /* ---------- Handle Trello JSON file ---- */
   const processTrelloFile = useCallback(
-    (file: File) => {
+    async (file: File) => {
       setImportError(null)
-      if (file.type !== "application/json" && !file.name.endsWith(".json")) {
-        setImportError("Please upload a valid JSON file.")
+      if (file.type !== "application/pdf" && !file.name.toLowerCase().endsWith(".pdf")) {
+        setImportError("Please upload a valid PDF file.")
         return
       }
 
-      const reader = new FileReader()
-      reader.onload = (e) => {
-        try {
-          const raw = JSON.parse(e.target?.result as string)
+      setIsExtracting(true)
+      setExtractionStep(1)
 
-          // Basic validation: check for expected Trello card fields
-          if (!raw.id || !raw.name || !raw.actions) {
-            setImportError(
-              "This doesn't look like a Trello card JSON export. Missing required fields."
-            )
-            return
-          }
+      const stepTimer1 = setTimeout(() => setExtractionStep(2), 1200)
+      const stepTimer2 = setTimeout(() => setExtractionStep(3), 2800)
 
-          const parsed = parseTrelloJson(raw)
-          setTrelloData(parsed)
+      try {
+        const formData = new FormData()
+        formData.append("file", file)
 
-          // Populate form fields
-          setTitle(parsed.name)
-          setDescription(parsed.desc)
-          if (parsed.due) {
-            setDeadline(parsed.due.split("T")[0])
-          }
-          // Try to extract client name from the card name pattern "X - Client - Ref"
-          const nameParts = parsed.name.split(" - ")
-          if (nameParts.length >= 2) {
-            setClientName(nameParts.slice(0, -1).join(" - ").trim())
-            setStyleRef(nameParts[nameParts.length - 1]?.trim() || "")
-          } else {
-            setClientName(parsed.name)
-          }
-        } catch {
-          setImportError("Failed to parse JSON file. Please check the format.")
+        const res = await fetch("/api/tasks/parse-pdf", {
+          method: "POST",
+          body: formData,
+        })
+
+        clearTimeout(stepTimer1)
+        clearTimeout(stepTimer2)
+
+        if (!res.ok) {
+          const errData = await res.json()
+          throw new Error(errData.error || `HTTP error ${res.status}`)
         }
+
+        setExtractionStep(3)
+        const parsed = await res.json() as ParsedTrelloCard
+        setTrelloData(parsed)
+
+        // Populate form fields
+        setTitle(parsed.name || "")
+        setDescription(parsed.desc || "")
+        if (parsed.due) {
+          setDeadline(parsed.due.split("T")[0])
+        }
+        
+        // Extract client name and style reference from title if possible
+        // Format: P26826 - Ace of Diamonds - sadir
+        const titleParts = (parsed.name || "").split(" - ")
+        if (titleParts.length >= 3) {
+          setStyleRef(titleParts[0].trim())
+          setClientName(titleParts.slice(1).join(" - ").trim())
+        } else if (titleParts.length === 2) {
+          setStyleRef(titleParts[0].trim())
+          setClientName(titleParts[1].trim())
+        } else {
+          setClientName(parsed.name || "")
+          setStyleRef("")
+        }
+
+        // Prefill points if present in custom fields
+        const pointsField = parsed.customFields?.find(
+          (cf) => cf.fieldName.toLowerCase() === "points"
+        )
+        if (pointsField && pointsField.value) {
+          setPoints(pointsField.value)
+        }
+
+        // Prefill priority if it matches
+        const priorityField = parsed.customFields?.find(
+          (cf) => cf.fieldName.toLowerCase() === "priority"
+        )
+        if (priorityField && priorityField.value) {
+          const val = priorityField.value.toLowerCase()
+          if (["low", "medium", "high"].includes(val)) {
+            setPriority(val)
+          }
+        }
+
+      } catch (err: any) {
+        console.error("Extraction error:", err)
+        setImportError(err.message || "Failed to extract data from PDF. Please check Cloudflare settings.")
+      } finally {
+        setIsExtracting(false)
+        setExtractionStep(0)
       }
-      reader.readAsText(file)
     },
     []
   )
@@ -336,6 +335,7 @@ export function CreateTaskForm({
     setStyleRef("")
     setPoints("")
     setDriveLink("")
+    setPriority("medium")
     if (fileInputRef.current) fileInputRef.current.value = ""
   }
 
@@ -345,6 +345,7 @@ export function CreateTaskForm({
     setError(null)
     const formData = new FormData(e.currentTarget)
     formData.set("assigned_to", assignedTo)
+    formData.set("priority", priority)
     startTransition(async () => {
       const result = await createTaskAction(formData)
       if (result?.error) setError(result.error)
@@ -365,7 +366,7 @@ export function CreateTaskForm({
                   Import from Trello
                 </h3>
                 <p className="mt-1 text-xs text-muted-foreground">
-                  Upload a Trello card JSON export to auto-fill the form.
+                  Upload a Trello card PDF export to auto-fill the form.
                 </p>
               </div>
               {trelloData && (
@@ -382,36 +383,14 @@ export function CreateTaskForm({
             </div>
 
             {/* Drop zone */}
-            <div
-              onDrop={handleDrop}
-              onDragOver={handleDragOver}
-              onDragLeave={handleDragLeave}
-              onClick={() => fileInputRef.current?.click()}
-              className={`
-                relative flex flex-col items-center justify-center gap-2
-                rounded-lg border-2 border-dashed p-6 cursor-pointer
-                transition-all duration-200 ease-in-out
-                ${
-                  isDragging
-                    ? "border-primary bg-primary/5 scale-[1.01]"
-                    : trelloData
-                      ? "border-emerald-500/50 bg-emerald-500/5"
-                      : "border-muted-foreground/25 hover:border-muted-foreground/40 hover:bg-muted/30"
-                }
-              `}
-            >
-              <input
-                ref={fileInputRef}
-                type="file"
-                accept=".json,application/json"
-                onChange={handleFileChange}
-                className="hidden"
-              />
-
-              {trelloData ? (
-                <div className="flex items-center gap-2 text-sm text-emerald-700 dark:text-emerald-400">
+            {isExtracting ? (
+              <div className="flex flex-col items-center justify-center gap-4 py-8 px-4 rounded-lg bg-primary/[0.02] border-2 border-dashed border-primary/30 backdrop-blur-xs animate-pulse-slow">
+                {/* High-fidelity glowing spinner */}
+                <div className="relative flex items-center justify-center h-12 w-12">
+                  <div className="absolute inset-0 rounded-full border-4 border-primary/20 animate-ping"></div>
+                  <div className="h-10 w-10 rounded-full border-4 border-t-primary border-r-transparent border-b-transparent border-l-transparent animate-spin"></div>
                   <svg
-                    className="h-5 w-5"
+                    className="absolute h-5 w-5 text-primary animate-pulse"
                     fill="none"
                     viewBox="0 0 24 24"
                     strokeWidth={2}
@@ -420,40 +399,111 @@ export function CreateTaskForm({
                     <path
                       strokeLinecap="round"
                       strokeLinejoin="round"
-                      d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+                      d="M9.813 15.904L9 21l8.982-8.997M17 10h-4V4L4 14h8v6l8-10h-3z"
                     />
                   </svg>
-                  <span className="font-medium">
-                    Imported: {trelloData.name}
-                  </span>
                 </div>
-              ) : (
-                <>
-                  <svg
-                    className="h-8 w-8 text-muted-foreground/50"
-                    fill="none"
-                    viewBox="0 0 24 24"
-                    strokeWidth={1.5}
-                    stroke="currentColor"
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m6.75 12l-3-3m0 0l-3 3m3-3v6m-1.5-15H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z"
-                    />
-                  </svg>
-                  <p className="text-sm text-muted-foreground">
-                    <span className="font-medium text-foreground">
-                      Click to upload
-                    </span>{" "}
-                    or drag & drop
-                  </p>
-                  <p className="text-xs text-muted-foreground/70">
-                    Trello card JSON export only
-                  </p>
-                </>
-              )}
-            </div>
+                
+                <div className="text-center">
+                  <p className="text-sm font-semibold text-foreground">Extracting Task Details</p>
+                  <p className="text-xs text-muted-foreground mt-0.5">Please wait while our AI parses the card</p>
+                </div>
+
+                {/* Micro-animations steps */}
+                <div className="w-full max-w-xs mt-2 space-y-2 text-xs">
+                  <div className="flex items-center gap-2.5 transition-all duration-300">
+                    <span className={`h-2 w-2 rounded-full transition-all duration-300 ${extractionStep >= 1 ? "bg-primary scale-125 animate-scale-up" : "bg-muted-foreground/30"}`} />
+                    <span className={`${extractionStep === 1 ? "text-primary font-medium" : "text-muted-foreground"}`}>
+                      Reading PDF document...
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-2.5 transition-all duration-300">
+                    <span className={`h-2 w-2 rounded-full transition-all duration-300 ${extractionStep >= 2 ? "bg-primary scale-125 animate-scale-up" : "bg-muted-foreground/30"}`} />
+                    <span className={`${extractionStep === 2 ? "text-primary font-medium" : "text-muted-foreground"}`}>
+                      Extracting text layout...
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-2.5 transition-all duration-300">
+                    <span className={`h-2 w-2 rounded-full transition-all duration-300 ${extractionStep >= 3 ? "bg-primary scale-125 animate-scale-up" : "bg-muted-foreground/30"}`} />
+                    <span className={`${extractionStep === 3 ? "text-primary font-medium animate-pulse" : "text-muted-foreground"}`}>
+                      Cloudflare Workers AI parsing...
+                    </span>
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <div
+                onDrop={handleDrop}
+                onDragOver={handleDragOver}
+                onDragLeave={handleDragLeave}
+                onClick={() => fileInputRef.current?.click()}
+                className={`
+                  relative flex flex-col items-center justify-center gap-2
+                  rounded-lg border-2 border-dashed p-6 cursor-pointer
+                  transition-all duration-200 ease-in-out
+                  ${isDragging
+                    ? "border-primary bg-primary/5 scale-[1.01]"
+                    : trelloData
+                      ? "border-emerald-500/50 bg-emerald-500/5"
+                      : "border-muted-foreground/25 hover:border-muted-foreground/40 hover:bg-muted/30"
+                  }
+                `}
+              >
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept=".pdf,application/pdf"
+                  onChange={handleFileChange}
+                  className="hidden"
+                />
+
+                {trelloData ? (
+                  <div className="flex items-center gap-2 text-sm text-emerald-700 dark:text-emerald-400">
+                    <svg
+                      className="h-5 w-5"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                      strokeWidth={2}
+                      stroke="currentColor"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+                      />
+                    </svg>
+                    <span className="font-medium">
+                      Imported PDF: {trelloData.name}
+                    </span>
+                  </div>
+                ) : (
+                  <>
+                    <svg
+                      className="h-8 w-8 text-muted-foreground/50"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                      strokeWidth={1.5}
+                      stroke="currentColor"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m6.75 12l-3-3m0 0l-3 3m3-3v6m-1.5-15H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z"
+                      />
+                    </svg>
+                    <p className="text-sm text-muted-foreground">
+                      <span className="font-medium text-foreground">
+                        Click to upload
+                      </span>{" "}
+                      or drag & drop
+                    </p>
+                    <p className="text-xs text-muted-foreground/70">
+                      Trello card PDF printout only
+                    </p>
+                  </>
+                )}
+              </div>
+            )}
 
             {importError && (
               <p className="rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">
@@ -528,14 +578,13 @@ export function CreateTaskForm({
             {/* Points + Deadline */}
             <div className="grid grid-cols-2 gap-4">
               <div className="flex flex-col gap-1.5">
-                <Label htmlFor="points">Points *</Label>
+                <Label htmlFor="points">Points</Label>
                 <Input
                   id="points"
                   name="points"
                   type="number"
-                  min={1}
+                  min={0}
                   placeholder="e.g. 10"
-                  required
                   disabled={isPending}
                   value={points}
                   onChange={(e) => setPoints(e.target.value)}
@@ -574,25 +623,45 @@ export function CreateTaskForm({
               </p>
             </div>
 
-            {/* Assign to Designer */}
-            <div className="flex flex-col gap-1.5">
-              <Label>Assign to Designer</Label>
-              <Select
-                value={assignedTo}
-                onValueChange={setAssignedTo}
-                disabled={isPending}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Select a designer…" />
-                </SelectTrigger>
-                <SelectContent>
-                  {designers.map((d) => (
-                    <SelectItem key={d.id} value={d.id}>
-                      {d.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+            {/* Priority & Assignee */}
+            <div className="grid grid-cols-2 gap-4">
+              <div className="flex flex-col gap-1.5">
+                <Label>Priority</Label>
+                <Select
+                  value={priority}
+                  onValueChange={setPriority}
+                  disabled={isPending}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select a priority…" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="low">Low</SelectItem>
+                    <SelectItem value="medium">Medium</SelectItem>
+                    <SelectItem value="high">High</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="flex flex-col gap-1.5">
+                <Label>Assign to Designer</Label>
+                <Select
+                  value={assignedTo}
+                  onValueChange={setAssignedTo}
+                  disabled={isPending}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select a designer…" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {designers.map((d) => (
+                      <SelectItem key={d.id} value={d.id}>
+                        {d.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
             </div>
 
             {/* ======================================================== */}
@@ -600,6 +669,7 @@ export function CreateTaskForm({
             {/* ======================================================== */}
             {trelloData && (
               <>
+                <input type="hidden" name="trello_data" value={JSON.stringify(trelloData)} />
                 <Separator className="my-1" />
                 <div className="flex flex-col gap-4">
                   <h4 className="text-sm font-semibold text-muted-foreground tracking-wide uppercase">
@@ -769,11 +839,10 @@ export function CreateTaskForm({
                                 className="flex items-center gap-2 text-xs"
                               >
                                 <span
-                                  className={`inline-flex h-3.5 w-3.5 shrink-0 items-center justify-center rounded border ${
-                                    ci.state === "complete"
+                                  className={`inline-flex h-3.5 w-3.5 shrink-0 items-center justify-center rounded border ${ci.state === "complete"
                                       ? "bg-emerald-500 border-emerald-500 text-white"
                                       : "border-muted-foreground/30"
-                                  }`}
+                                    }`}
                                 >
                                   {ci.state === "complete" && (
                                     <svg
