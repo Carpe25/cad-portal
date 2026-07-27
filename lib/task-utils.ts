@@ -22,9 +22,19 @@ export const STATUS_COLORS: Record<string, string> = {
 }
 
 export const PRIORITY_COLORS: Record<string, string> = {
-  high: "bg-red-500/10 text-red-600 dark:text-red-400",
-  medium: "bg-amber-500/10 text-amber-600 dark:text-amber-400",
+  high: "bg-red-500/10 text-red-600 dark:text-red-400 border-red-500/20",
+  medium: "bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/20",
   low: "bg-secondary text-muted-foreground",
+}
+
+export const SPEED_COLORS: Record<string, string> = {
+  U: "bg-red-500/10 text-red-600 dark:text-red-400 border-red-500/20",
+  N: "bg-blue-500/10 text-blue-600 dark:text-blue-400 border-blue-500/20",
+}
+
+export const SPEED_LABELS: Record<string, string> = {
+  U: "Speed: Urgent (U)",
+  N: "Speed: Normal (N)",
 }
 
 export const LABEL_COLORS: Record<string, string> = {

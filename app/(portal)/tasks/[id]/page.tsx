@@ -9,6 +9,7 @@ import {
   STATUS_LABELS_FULL as STATUS_LABELS,
   STATUS_COLORS,
   PRIORITY_COLORS,
+  SPEED_COLORS,
   labelBadgeClass,
 } from "@/lib/task-utils"
 import { ParsedTrelloCard } from "@/lib/trello-types"
@@ -19,6 +20,16 @@ type Task = {
   readable_id: string
   title: string
   client_name: string
+  customer_project_no: string | null
+  speed: string | null
+  customer_code: string | null
+  category_code: string | null
+  complexity: string | null
+  work_type: string | null
+  sr_no: string | null
+  cd_project_no: string | null
+  request_date: string | null
+  reference_image: string | null
   style_ref_number: string | null
   description: string | null
   points: number
@@ -116,7 +127,10 @@ export default async function TaskDetailPage({
         }[])
       : []
 
+  const taskHeading = task.customer_project_no || task.title
+
   const descriptionLine = [
+    task.cd_project_no ? `CD Project No: ${task.cd_project_no}` : null,
     `Client: ${task.client_name}`,
     task.designer_name ? `Designer: ${task.designer_name}` : null,
   ]
@@ -128,16 +142,16 @@ export default async function TaskDetailPage({
       <div className="mx-auto w-full max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
         {/* Header */}
         <PageHeader
-          roleLabel={`${task.readable_id}${task.style_ref_number ? ` · ${task.style_ref_number}` : ""}`}
-          title={task.title}
+          roleLabel={task.customer_project_no ? `Customer Project: ${task.customer_project_no}` : (task.cd_project_no || task.readable_id)}
+          title={taskHeading}
           description={descriptionLine}
           action={
             <div className="flex items-center gap-2">
               <Badge
                 variant="outline"
-                className={`capitalize ${PRIORITY_COLORS[task.priority] ?? ""}`}
+                className={SPEED_COLORS[task.speed || "N"] || PRIORITY_COLORS[task.priority]}
               >
-                {task.priority}
+                Speed: {task.speed || (task.priority === "high" ? "U" : "N")}
               </Badge>
               <Badge
                 variant="outline"
@@ -158,6 +172,58 @@ export default async function TaskDetailPage({
                 Task Details
               </h2>
               <dl className="grid grid-cols-2 gap-x-6 gap-y-4 text-sm sm:grid-cols-4">
+                {task.cd_project_no && (
+                  <div>
+                    <dt className="text-xs text-muted-foreground">CD Project No.</dt>
+                    <dd className="mt-0.5 font-mono font-bold text-primary">
+                      {task.cd_project_no}
+                    </dd>
+                  </div>
+                )}
+                {task.customer_project_no && (
+                  <div>
+                    <dt className="text-xs text-muted-foreground">Customer Project No.</dt>
+                    <dd className="mt-0.5 font-medium">{task.customer_project_no}</dd>
+                  </div>
+                )}
+                {task.speed && (
+                  <div>
+                    <dt className="text-xs text-muted-foreground">Speed</dt>
+                    <dd className="mt-0.5 font-semibold">
+                      {task.speed === "U" ? "U (Urgent)" : "N (Normal)"}
+                    </dd>
+                  </div>
+                )}
+                {task.category_code && (
+                  <div>
+                    <dt className="text-xs text-muted-foreground">Category</dt>
+                    <dd className="mt-0.5 font-semibold">{task.category_code}</dd>
+                  </div>
+                )}
+                {task.complexity && (
+                  <div>
+                    <dt className="text-xs text-muted-foreground">Complexity</dt>
+                    <dd className="mt-0.5 font-semibold">{task.complexity}</dd>
+                  </div>
+                )}
+                {task.work_type && (
+                  <div>
+                    <dt className="text-xs text-muted-foreground">Work Type</dt>
+                    <dd className="mt-0.5 font-medium">{task.work_type}</dd>
+                  </div>
+                )}
+                {task.request_date && (
+                  <div>
+                    <dt className="text-xs text-muted-foreground">Request Date</dt>
+                    <dd className="mt-0.5 font-medium">
+                      {new Date(task.request_date).toLocaleDateString("en-IN", {
+                        day: "numeric",
+                        month: "short",
+                        year: "numeric",
+                      })}
+                    </dd>
+                  </div>
+                )}
                 <div>
                   <dt className="text-xs text-muted-foreground">Points</dt>
                   <dd className="mt-0.5 font-semibold">{task.points} pts</dd>
@@ -189,6 +255,25 @@ export default async function TaskDetailPage({
                   </dd>
                 </div>
               </dl>
+
+              {/* Reference Image display */}
+              {task.reference_image && (
+                <>
+                  <Separator className="my-4" />
+                  <div className="flex flex-col gap-2">
+                    <span className="text-xs font-semibold text-muted-foreground tracking-wide uppercase">
+                      Reference Image
+                    </span>
+                    <div className="relative max-w-sm overflow-hidden rounded-lg border border-border bg-muted/30 p-1">
+                      <img
+                        src={task.reference_image}
+                        alt="Reference"
+                        className="max-h-64 w-full rounded object-contain"
+                      />
+                    </div>
+                  </div>
+                </>
+              )}
               {task.description && (
                 <>
                   <Separator className="my-4" />

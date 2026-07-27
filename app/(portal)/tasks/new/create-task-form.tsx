@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useTransition, useRef, useCallback } from "react"
+import { useState, useTransition, ChangeEvent } from "react"
 import { createTaskAction } from "./actions"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -15,337 +15,115 @@ import {
 } from "@/components/ui/select"
 import { Card, CardContent } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
-import { Separator } from "@/components/ui/separator"
+import { CalendarIcon, Image as ImageIcon, Sparkles, X } from "lucide-react"
 
-/* ------------------------------------------------------------------ */
-/*  Types for the parsed Trello card data                              */
-/* ------------------------------------------------------------------ */
-import {
-  TrelloLabel,
-  TrelloMember,
-  TrelloCheckItem,
-  TrelloChecklist,
-  TrelloCustomField,
-  TrelloAttachment,
-  ParsedTrelloCard
-} from "@/lib/trello-types"
+const CATEGORIES = [
+  { code: "RN", label: "Ring" },
+  { code: "PN", label: "Pendant" },
+  { code: "ER", label: "Earring" },
+  { code: "NK", label: "Necklace" },
+  { code: "OB", label: "Oval Bangel" },
+  { code: "RB", label: "Round Bengel" },
+  { code: "CH", label: "Charm" },
+  { code: "BR", label: "Bracelet" },
+  { code: "CF", label: "Cufflink" },
+  { code: "BH", label: "Brooch" },
+]
 
-// interface TrelloLabel {
-//   id: string
-//   name: string
-//   color: string
-// }
-/* ------------------------------------------------------------------ */
-/*  Parser: Trello JSON → ParsedTrelloCard                             */
-/* ------------------------------------------------------------------ */
-function parseTrelloJson(raw: Record<string, unknown>): ParsedTrelloCard {
-  const json = raw as Record<string, any>
+const COMPLEXITIES = ["A", "B", "C", "D"]
+const SPEEDS = ["U", "N"]
 
-  /* --- Board & list names from actions (skip commentCard) --- */
-  let boardName: string | null = null
-  let listName: string | null = null
-
-  const actions: any[] = Array.isArray(json.actions) ? json.actions : []
-  for (const action of actions) {
-    if (action.type === "commentCard") continue
-    const data = action.data ?? {}
-    if (!boardName && data.board?.name) boardName = data.board.name
-    if (!listName) {
-      if (data.listAfter?.name) {
-        listName = data.listAfter.name
-        break
-      }
-      if (data.list?.name) {
-        listName = data.list.name
-      }
-    }
-  }
-
-  /* --- Labels --- */
-  const labels: TrelloLabel[] = (json.labels ?? []).map((l: any) => ({
-    id: l.id,
-    name: l.name || l.color || "Unlabelled",
-    color: l.color ?? "gray",
-  }))
-
-  /* --- Members --- */
-  const members: TrelloMember[] = (json.members ?? []).map((m: any) => ({
-    id: m.id,
-    fullName: m.fullName ?? m.username ?? "Unknown",
-    username: m.username ?? "",
-    avatarUrl: m.avatarUrl ?? null,
-  }))
-
-  /* --- Checklists --- */
-  const checklists: TrelloChecklist[] = (json.checklists ?? []).map(
-    (cl: any) => ({
-      id: cl.id,
-      name: cl.name,
-      checkItems: (cl.checkItems ?? []).map((ci: any) => ({
-        id: ci.id,
-        name: ci.name,
-        state: ci.state,
-      })),
-    })
-  )
-
-  /* --- Custom field items --- */
-  const customFields: TrelloCustomField[] = []
-  const cfItems: any[] = json.customFieldItems ?? []
-
-  for (const cfi of cfItems) {
-    // Try to resolve name from the actions history
-    let fieldName = cfi.idCustomField
-    let fieldType = "unknown"
-    let value: string | null = null
-
-    // Search actions for updateCustomFieldItem to find name/value
-    for (const action of actions) {
-      if (
-        action.type === "updateCustomFieldItem" &&
-        action.data?.customField?.id === cfi.idCustomField
-      ) {
-        fieldName = action.data.customField.name ?? fieldName
-        fieldType = action.data.customField.type ?? fieldType
-        break
-      }
-    }
-
-    // Resolve value
-    if (cfi.value) {
-      if (cfi.value.text) value = cfi.value.text
-      else if (cfi.value.number) value = cfi.value.number
-      else if (cfi.value.date) value = cfi.value.date
-      else if (cfi.value.checked !== undefined)
-        value = cfi.value.checked ? "Yes" : "No"
-      else value = JSON.stringify(cfi.value)
-    } else if (cfi.idValue) {
-      // List-type custom field — show value ID (actual option name not in card export)
-      value = `Option: ${cfi.idValue}`
-    }
-
-    customFields.push({ id: cfi.id, fieldName, fieldType, value })
-  }
-
-  /* --- Attachments (from actions, skip commentCard) --- */
-  const attachments: TrelloAttachment[] = []
-  const seenAttachments = new Set<string>()
-  for (const action of actions) {
-    if (action.type === "commentCard") continue
-    if (action.type === "addAttachmentToCard" && action.data?.attachment) {
-      const att = action.data.attachment
-      if (!seenAttachments.has(att.id)) {
-        seenAttachments.add(att.id)
-        attachments.push({
-          id: att.id,
-          name: att.name,
-          url: att.url,
-          date: action.date,
-        })
-      }
-    }
-  }
-
-  return {
-    id: json.id ?? "",
-    name: json.name ?? "",
-    desc: json.desc ?? "",
-    due: json.due ?? null,
-    dueComplete: json.dueComplete ?? false,
-    dateLastActivity: json.dateLastActivity ?? null,
-    closed: json.closed ?? false,
-    url: json.url ?? "",
-    shortUrl: json.shortUrl ?? "",
-    labels,
-    boardName,
-    listName,
-    members,
-    checklists,
-    customFields,
-    attachments,
-  }
-}
-
-/* ------------------------------------------------------------------ */
-/*  Colour helpers for Trello label badges                             */
-/* ------------------------------------------------------------------ */
-const LABEL_COLORS: Record<string, string> = {
-  green: "bg-emerald-600/15 text-emerald-700 dark:text-emerald-400",
-  yellow: "bg-amber-500/15 text-amber-700 dark:text-amber-400",
-  orange: "bg-orange-500/15 text-orange-700 dark:text-orange-400",
-  red: "bg-red-500/15 text-red-700 dark:text-red-400",
-  purple: "bg-violet-500/15 text-violet-700 dark:text-violet-400",
-  blue: "bg-blue-500/15 text-blue-700 dark:text-blue-400",
-  sky: "bg-sky-500/15 text-sky-700 dark:text-sky-400",
-  lime: "bg-lime-500/15 text-lime-700 dark:text-lime-400",
-  pink: "bg-pink-500/15 text-pink-700 dark:text-pink-400",
-  black: "bg-zinc-800/15 text-zinc-700 dark:text-zinc-300",
-}
-
-function labelBadgeClass(color: string) {
-  return LABEL_COLORS[color] ?? "bg-muted text-muted-foreground"
-}
-
-/* ------------------------------------------------------------------ */
-/*  Component                                                          */
-/* ------------------------------------------------------------------ */
 export function CreateTaskForm({
   designers,
+  customers = [],
+  nextSrNoCount = 1,
 }: {
   designers: { id: string; name: string }[]
+  customers?: { uuid: string; code: string; name: string }[]
+  nextSrNoCount?: number
 }) {
   const [error, setError] = useState<string | null>(null)
   const [isPending, startTransition] = useTransition()
-  const [assignedTo, setAssignedTo] = useState("")
 
-  // Trello import state
-  const [trelloData, setTrelloData] = useState<ParsedTrelloCard | null>(null)
-  const [importError, setImportError] = useState<string | null>(null)
-  const [isDragging, setIsDragging] = useState(false)
-  const [isExtracting, setIsExtracting] = useState(false)
-  const [extractionStep, setExtractionStep] = useState(0)
-  const fileInputRef = useRef<HTMLInputElement>(null)
+  // Form field states
+  const [customerProjectNo, setCustomerProjectNo] = useState("")
+  const [speed, setSpeed] = useState("U")
+  const [selectedCustomerCode, setSelectedCustomerCode] = useState(
+    customers[0]?.code ?? "01"
+  )
+  const [clientName, setClientName] = useState(customers[0]?.name ?? "")
+  const [categoryCode, setCategoryCode] = useState("RN")
+  const [complexity, setComplexity] = useState("A")
+  const [workType, setWorkType] = useState<"New" | "Old">("New")
+  const [requestDate, setRequestDate] = useState(
+    new Date().toISOString().split("T")[0]
+  )
 
-  /* ---------- Form field state (populated from Trello or manual) ---- */
+  // Standard task fields
   const [title, setTitle] = useState("")
   const [description, setDescription] = useState("")
   const [deadline, setDeadline] = useState("")
-  const [clientName, setClientName] = useState("")
-  const [styleRef, setStyleRef] = useState("")
   const [points, setPoints] = useState("")
   const [driveLink, setDriveLink] = useState("")
   const [priority, setPriority] = useState("medium")
+  const [assignedTo, setAssignedTo] = useState("")
 
-  /* ---------- Handle Trello JSON file ---- */
-  const processTrelloFile = useCallback(
-    async (file: File) => {
-      setImportError(null)
-      if (file.type !== "application/pdf" && !file.name.toLowerCase().endsWith(".pdf")) {
-        setImportError("Please upload a valid PDF file.")
-        return
-      }
+  // Reference image preview state
+  const [imagePreview, setImagePreview] = useState<string | null>(null)
 
-      setIsExtracting(true)
-      setExtractionStep(1)
+  // Auto-generate Sr. No. (4 digits e.g. 0001)
+  const srNoFormatted = String(nextSrNoCount).padStart(4, "0")
 
-      const stepTimer1 = setTimeout(() => setExtractionStep(2), 1200)
-      const stepTimer2 = setTimeout(() => setExtractionStep(3), 2800)
+  // Auto-generate CD Project No.
+  const versionStr = workType === "New" ? "V1" : "V2"
+  const cdProjectNo = `${speed}${selectedCustomerCode}${categoryCode}${complexity}${srNoFormatted}${versionStr}`
 
-      try {
-        const formData = new FormData()
-        formData.append("file", file)
+  // Update customer when selection changes
+  const handleCustomerChange = (code: string) => {
+    setSelectedCustomerCode(code)
+    const cust = customers.find((c) => c.code === code)
+    if (cust) {
+      setClientName(cust.name)
+    }
+  }
 
-        const res = await fetch("/api/tasks/parse-pdf", {
-          method: "POST",
-          body: formData,
-        })
-
-        clearTimeout(stepTimer1)
-        clearTimeout(stepTimer2)
-
-        if (!res.ok) {
-          const errData = await res.json()
-          throw new Error(errData.error || `HTTP error ${res.status}`)
-        }
-
-        setExtractionStep(3)
-        const parsed = await res.json() as ParsedTrelloCard
-        setTrelloData(parsed)
-
-        // Populate form fields
-        setTitle(parsed.name || "")
-        setDescription(parsed.desc || "")
-        if (parsed.due) {
-          setDeadline(parsed.due.split("T")[0])
-        }
-        
-        // Extract client name and style reference from title if possible
-        // Format: P26826 - Ace of Diamonds - sadir
-        const titleParts = (parsed.name || "").split(" - ")
-        if (titleParts.length >= 3) {
-          setStyleRef(titleParts[0].trim())
-          setClientName(titleParts.slice(1).join(" - ").trim())
-        } else if (titleParts.length === 2) {
-          setStyleRef(titleParts[0].trim())
-          setClientName(titleParts[1].trim())
-        } else {
-          setClientName(parsed.name || "")
-          setStyleRef("")
-        }
-
-        // Prefill points if present in custom fields
-        const pointsField = parsed.customFields?.find(
-          (cf) => cf.fieldName.toLowerCase() === "points"
-        )
-        if (pointsField && pointsField.value) {
-          setPoints(pointsField.value)
-        }
-
-        // Prefill priority if it matches
-        const priorityField = parsed.customFields?.find(
-          (cf) => cf.fieldName.toLowerCase() === "priority"
-        )
-        if (priorityField && priorityField.value) {
-          const val = priorityField.value.toLowerCase()
-          if (["low", "medium", "high"].includes(val)) {
-            setPriority(val)
-          }
-        }
-
-      } catch (err: any) {
-        console.error("Extraction error:", err)
-        setImportError(err.message || "Failed to extract data from PDF. Please check Cloudflare settings.")
-      } finally {
-        setIsExtracting(false)
-        setExtractionStep(0)
-      }
-    },
-    []
-  )
-
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  // Handle reference image selection
+  const handleImageChange = (e: ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
-    if (file) processTrelloFile(file)
+    if (file) {
+      const reader = new FileReader()
+      reader.onloadend = () => {
+        setImagePreview(reader.result as string)
+      }
+      reader.readAsDataURL(file)
+    } else {
+      setImagePreview(null)
+    }
   }
 
-  const handleDrop = useCallback(
-    (e: React.DragEvent) => {
-      e.preventDefault()
-      setIsDragging(false)
-      const file = e.dataTransfer.files?.[0]
-      if (file) processTrelloFile(file)
-    },
-    [processTrelloFile]
-  )
-
-  const handleDragOver = (e: React.DragEvent) => {
-    e.preventDefault()
-    setIsDragging(true)
-  }
-
-  const handleDragLeave = () => setIsDragging(false)
-
-  const clearTrelloImport = () => {
-    setTrelloData(null)
-    setImportError(null)
-    setTitle("")
-    setDescription("")
-    setDeadline("")
-    setClientName("")
-    setStyleRef("")
-    setPoints("")
-    setDriveLink("")
-    setPriority("medium")
-    if (fileInputRef.current) fileInputRef.current.value = ""
-  }
-
-  /* ---------- Submit ---- */
+  // Submit handler
   function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault()
     setError(null)
     const formData = new FormData(e.currentTarget)
+    formData.set("customer_project_no", customerProjectNo)
+    formData.set("speed", speed)
+    formData.set("customer_code", selectedCustomerCode)
+    formData.set("client_name", clientName)
+    formData.set("category_code", categoryCode)
+    formData.set("complexity", complexity)
+    formData.set("work_type", workType)
+    formData.set("sr_no", srNoFormatted)
+    formData.set("cd_project_no", cdProjectNo)
+    formData.set("request_date", requestDate)
     formData.set("assigned_to", assignedTo)
     formData.set("priority", priority)
+
+    // Default title to CD project no. if empty
+    if (!formData.get("title")) {
+      formData.set("title", cdProjectNo)
+    }
+
     startTransition(async () => {
       const result = await createTaskAction(formData)
       if (result?.error) setError(result.error)
@@ -353,612 +131,347 @@ export function CreateTaskForm({
   }
 
   return (
-    <div className="flex flex-col gap-6 max-w-2xl">
-      {/* ------------------------------------------------------------ */}
-      {/*  Trello JSON Upload Zone                                      */}
-      {/* ------------------------------------------------------------ */}
-      <Card className="shadow-xs border-dashed">
-        <CardContent className="pt-6">
-          <div className="flex flex-col gap-3">
-            <div className="flex items-center justify-between">
+    <Card className="shadow-xs border-border">
+      <CardContent className="pt-6">
+        <form onSubmit={handleSubmit} className="flex flex-col gap-6">
+          {/* Header Banner showing Auto-generated CD Project No */}
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 rounded-xl border border-primary/20 bg-primary/5 p-4">
+            <div className="flex items-center gap-3">
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary text-primary-foreground shadow-xs">
+                <Sparkles className="h-5 w-5" />
+              </div>
               <div>
-                <h3 className="text-sm font-semibold leading-none">
-                  Import from Trello
-                </h3>
-                <p className="mt-1 text-xs text-muted-foreground">
-                  Upload a Trello card PDF export to auto-fill the form.
+                <p className="text-xs font-semibold tracking-wider text-primary uppercase">
+                  Auto-Generated CD Project No.
+                </p>
+                <p className="font-mono text-xl font-bold tracking-tight text-foreground">
+                  {cdProjectNo}
                 </p>
               </div>
-              {trelloData && (
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  onClick={clearTrelloImport}
-                  className="text-xs h-7"
-                >
-                  Clear Import
-                </Button>
-              )}
             </div>
-
-            {/* Drop zone */}
-            {isExtracting ? (
-              <div className="flex flex-col items-center justify-center gap-4 py-8 px-4 rounded-lg bg-primary/[0.02] border-2 border-dashed border-primary/30 backdrop-blur-xs animate-pulse-slow">
-                {/* High-fidelity glowing spinner */}
-                <div className="relative flex items-center justify-center h-12 w-12">
-                  <div className="absolute inset-0 rounded-full border-4 border-primary/20 animate-ping"></div>
-                  <div className="h-10 w-10 rounded-full border-4 border-t-primary border-r-transparent border-b-transparent border-l-transparent animate-spin"></div>
-                  <svg
-                    className="absolute h-5 w-5 text-primary animate-pulse"
-                    fill="none"
-                    viewBox="0 0 24 24"
-                    strokeWidth={2}
-                    stroke="currentColor"
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      d="M9.813 15.904L9 21l8.982-8.997M17 10h-4V4L4 14h8v6l8-10h-3z"
-                    />
-                  </svg>
-                </div>
-                
-                <div className="text-center">
-                  <p className="text-sm font-semibold text-foreground">Extracting Task Details</p>
-                  <p className="text-xs text-muted-foreground mt-0.5">Please wait while our AI parses the card</p>
-                </div>
-
-                {/* Micro-animations steps */}
-                <div className="w-full max-w-xs mt-2 space-y-2 text-xs">
-                  <div className="flex items-center gap-2.5 transition-all duration-300">
-                    <span className={`h-2 w-2 rounded-full transition-all duration-300 ${extractionStep >= 1 ? "bg-primary scale-125 animate-scale-up" : "bg-muted-foreground/30"}`} />
-                    <span className={`${extractionStep === 1 ? "text-primary font-medium" : "text-muted-foreground"}`}>
-                      Reading PDF document...
-                    </span>
-                  </div>
-                  <div className="flex items-center gap-2.5 transition-all duration-300">
-                    <span className={`h-2 w-2 rounded-full transition-all duration-300 ${extractionStep >= 2 ? "bg-primary scale-125 animate-scale-up" : "bg-muted-foreground/30"}`} />
-                    <span className={`${extractionStep === 2 ? "text-primary font-medium" : "text-muted-foreground"}`}>
-                      Extracting text layout...
-                    </span>
-                  </div>
-                  <div className="flex items-center gap-2.5 transition-all duration-300">
-                    <span className={`h-2 w-2 rounded-full transition-all duration-300 ${extractionStep >= 3 ? "bg-primary scale-125 animate-scale-up" : "bg-muted-foreground/30"}`} />
-                    <span className={`${extractionStep === 3 ? "text-primary font-medium animate-pulse" : "text-muted-foreground"}`}>
-                      Cloudflare Workers AI parsing...
-                    </span>
-                  </div>
-                </div>
-              </div>
-            ) : (
-              <div
-                onDrop={handleDrop}
-                onDragOver={handleDragOver}
-                onDragLeave={handleDragLeave}
-                onClick={() => fileInputRef.current?.click()}
-                className={`
-                  relative flex flex-col items-center justify-center gap-2
-                  rounded-lg border-2 border-dashed p-6 cursor-pointer
-                  transition-all duration-200 ease-in-out
-                  ${isDragging
-                    ? "border-primary bg-primary/5 scale-[1.01]"
-                    : trelloData
-                      ? "border-emerald-500/50 bg-emerald-500/5"
-                      : "border-muted-foreground/25 hover:border-muted-foreground/40 hover:bg-muted/30"
-                  }
-                `}
+            <div className="flex items-center gap-2">
+              <Badge variant="outline" className="font-mono text-xs">
+                Sr. No: #{srNoFormatted}
+              </Badge>
+              <Badge
+                variant="secondary"
+                className="bg-primary/10 text-primary font-semibold text-xs"
               >
-                <input
-                  ref={fileInputRef}
-                  type="file"
-                  accept=".pdf,application/pdf"
-                  onChange={handleFileChange}
-                  className="hidden"
-                />
-
-                {trelloData ? (
-                  <div className="flex items-center gap-2 text-sm text-emerald-700 dark:text-emerald-400">
-                    <svg
-                      className="h-5 w-5"
-                      fill="none"
-                      viewBox="0 0 24 24"
-                      strokeWidth={2}
-                      stroke="currentColor"
-                    >
-                      <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
-                      />
-                    </svg>
-                    <span className="font-medium">
-                      Imported PDF: {trelloData.name}
-                    </span>
-                  </div>
-                ) : (
-                  <>
-                    <svg
-                      className="h-8 w-8 text-muted-foreground/50"
-                      fill="none"
-                      viewBox="0 0 24 24"
-                      strokeWidth={1.5}
-                      stroke="currentColor"
-                    >
-                      <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m6.75 12l-3-3m0 0l-3 3m3-3v6m-1.5-15H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z"
-                      />
-                    </svg>
-                    <p className="text-sm text-muted-foreground">
-                      <span className="font-medium text-foreground">
-                        Click to upload
-                      </span>{" "}
-                      or drag & drop
-                    </p>
-                    <p className="text-xs text-muted-foreground/70">
-                      Trello card PDF printout only
-                    </p>
-                  </>
-                )}
-              </div>
-            )}
-
-            {importError && (
-              <p className="rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">
-                {importError}
-              </p>
-            )}
+                {workType === "New" ? "Version 1" : "Version 2+"}
+              </Badge>
+            </div>
           </div>
-        </CardContent>
-      </Card>
 
-      {/* ------------------------------------------------------------ */}
-      {/*  Main Form                                                    */}
-      {/* ------------------------------------------------------------ */}
-      <Card className="shadow-xs">
-        <CardContent className="pt-6">
-          <form onSubmit={handleSubmit} className="flex flex-col gap-5">
-            {/* Title */}
+          {error && (
+            <div className="rounded-md bg-destructive/10 px-4 py-3 text-sm text-destructive">
+              {error}
+            </div>
+          )}
+
+          {/* Grid section 1: Project & Customer Specs */}
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            {/* Customer Project No */}
             <div className="flex flex-col gap-1.5">
-              <Label htmlFor="title">Task Title *</Label>
+              <Label htmlFor="customer_project_no">Customer Project No.</Label>
               <Input
-                id="title"
-                name="title"
-                placeholder="e.g. Living Room Layout - Johnson"
-                required
+                id="customer_project_no"
+                name="customer_project_no"
+                placeholder="e.g. PRJ-99201"
                 disabled={isPending}
-                value={title}
-                onChange={(e) => setTitle(e.target.value)}
+                value={customerProjectNo}
+                onChange={(e) => setCustomerProjectNo(e.target.value)}
               />
             </div>
 
-            {/* Client Name + Style Ref */}
-            <div className="grid grid-cols-2 gap-4">
-              <div className="flex flex-col gap-1.5">
-                <Label htmlFor="client_name">Client Name *</Label>
+            {/* Request Date */}
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="request_date">Request Date *</Label>
+              <div className="relative">
                 <Input
-                  id="client_name"
-                  name="client_name"
-                  placeholder="e.g. Johnson & Co."
+                  id="request_date"
+                  name="request_date"
+                  type="date"
                   required
                   disabled={isPending}
-                  value={clientName}
-                  onChange={(e) => setClientName(e.target.value)}
-                />
-              </div>
-              <div className="flex flex-col gap-1.5">
-                <Label htmlFor="style_ref_number">Style / Ref Number</Label>
-                <Input
-                  id="style_ref_number"
-                  name="style_ref_number"
-                  placeholder="e.g. STY-2024-089"
-                  disabled={isPending}
-                  value={styleRef}
-                  onChange={(e) => setStyleRef(e.target.value)}
+                  value={requestDate}
+                  onChange={(e) => setRequestDate(e.target.value)}
                 />
               </div>
             </div>
+          </div>
 
-            {/* Description */}
+          {/* Grid section 2: Dropdowns for Speed, Customer, Category, Complexity, Work Type */}
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            {/* Speed dropdown */}
             <div className="flex flex-col gap-1.5">
-              <Label htmlFor="description">Description</Label>
-              <Textarea
-                id="description"
-                name="description"
-                placeholder="Describe the scope, dimensions, style notes..."
-                rows={4}
+              <Label htmlFor="speed">Speed *</Label>
+              <Select
+                value={speed}
+                onValueChange={setSpeed}
                 disabled={isPending}
-                value={description}
-                onChange={(e) => setDescription(e.target.value)}
-              />
+              >
+                <SelectTrigger id="speed">
+                  <SelectValue placeholder="Select speed" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="U">U (Urgent)</SelectItem>
+                  <SelectItem value="N">N (Normal)</SelectItem>
+                </SelectContent>
+              </Select>
             </div>
 
-            {/* Points + Deadline */}
-            <div className="grid grid-cols-2 gap-4">
-              <div className="flex flex-col gap-1.5">
-                <Label htmlFor="points">Points</Label>
-                <Input
-                  id="points"
-                  name="points"
-                  type="number"
-                  min={0}
-                  placeholder="e.g. 10"
-                  disabled={isPending}
-                  value={points}
-                  onChange={(e) => setPoints(e.target.value)}
-                />
-              </div>
-
-              <div className="flex flex-col gap-1.5">
-                <Label htmlFor="deadline">Deadline</Label>
-                <Input
-                  id="deadline"
-                  name="deadline"
-                  type="date"
-                  disabled={isPending}
-                  value={deadline}
-                  onChange={(e) => setDeadline(e.target.value)}
-                />
-              </div>
-            </div>
-
-            {/* Drive Folder Link */}
+            {/* Customer Name dropdown */}
             <div className="flex flex-col gap-1.5">
-              <Label htmlFor="drive_folder_link">
-                Google Drive Folder Link
-              </Label>
-              <Input
-                id="drive_folder_link"
-                name="drive_folder_link"
-                placeholder="https://drive.google.com/drive/folders/..."
-                disabled={isPending}
-                value={driveLink}
-                onChange={(e) => setDriveLink(e.target.value)}
-              />
-              <p className="text-xs text-muted-foreground">
-                Paste the task folder link from your CAD drive. Files will be
-                previewed inline.
-              </p>
-            </div>
-
-            {/* Priority & Assignee */}
-            <div className="grid grid-cols-2 gap-4">
-              <div className="flex flex-col gap-1.5">
-                <Label>Priority</Label>
+              <Label htmlFor="customer_select">Customer Name *</Label>
+              {customers.length > 0 ? (
                 <Select
-                  value={priority}
-                  onValueChange={setPriority}
+                  value={selectedCustomerCode}
+                  onValueChange={handleCustomerChange}
                   disabled={isPending}
                 >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select a priority…" />
+                  <SelectTrigger id="customer_select">
+                    <SelectValue placeholder="Select customer..." />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="low">Low</SelectItem>
-                    <SelectItem value="medium">Medium</SelectItem>
-                    <SelectItem value="high">High</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-
-              <div className="flex flex-col gap-1.5">
-                <Label>Assign to Designer</Label>
-                <Select
-                  value={assignedTo}
-                  onValueChange={setAssignedTo}
-                  disabled={isPending}
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select a designer…" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {designers.map((d) => (
-                      <SelectItem key={d.id} value={d.id}>
-                        {d.name}
+                    {customers.map((c) => (
+                      <SelectItem key={c.uuid} value={c.code}>
+                        <span className="font-mono font-semibold">{c.code}</span>
+                        {" - "}
+                        <span>{c.name}</span>
                       </SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
-              </div>
+              ) : (
+                <Input
+                  placeholder="No customers found in database"
+                  disabled
+                  readOnly
+                />
+              )}
             </div>
 
-            {/* ======================================================== */}
-            {/*  TRELLO IMPORT DETAILS — shown only when data is loaded   */}
-            {/* ======================================================== */}
-            {trelloData && (
-              <>
-                <input type="hidden" name="trello_data" value={JSON.stringify(trelloData)} />
-                <Separator className="my-1" />
-                <div className="flex flex-col gap-4">
-                  <h4 className="text-sm font-semibold text-muted-foreground tracking-wide uppercase">
-                    Trello Card Details
-                  </h4>
-
-                  {/* Board + List */}
-                  <div className="grid grid-cols-2 gap-4">
-                    {trelloData.boardName && (
-                      <div className="flex flex-col gap-1.5">
-                        <Label className="text-xs text-muted-foreground">
-                          Board
-                        </Label>
-                        <p className="text-sm font-medium">
-                          {trelloData.boardName}
-                        </p>
-                      </div>
-                    )}
-                    {trelloData.listName && (
-                      <div className="flex flex-col gap-1.5">
-                        <Label className="text-xs text-muted-foreground">
-                          Current List
-                        </Label>
-                        <p className="text-sm font-medium">
-                          {trelloData.listName}
-                        </p>
-                      </div>
-                    )}
-                  </div>
-
-                  {/* Status */}
-                  <div className="grid grid-cols-2 gap-4">
-                    <div className="flex flex-col gap-1.5">
-                      <Label className="text-xs text-muted-foreground">
-                        Card Status
-                      </Label>
-                      <div className="flex items-center gap-2">
-                        <Badge
-                          variant="secondary"
-                          className={
-                            trelloData.closed
-                              ? "bg-zinc-500/15 text-zinc-600"
-                              : "bg-emerald-500/15 text-emerald-700 dark:text-emerald-400"
-                          }
-                        >
-                          {trelloData.closed ? "Archived" : "Open"}
-                        </Badge>
-                        {trelloData.dueComplete && (
-                          <Badge
-                            variant="secondary"
-                            className="bg-emerald-500/15 text-emerald-700 dark:text-emerald-400"
-                          >
-                            Due Complete
-                          </Badge>
-                        )}
-                      </div>
-                    </div>
-                    {trelloData.dateLastActivity && (
-                      <div className="flex flex-col gap-1.5">
-                        <Label className="text-xs text-muted-foreground">
-                          Last Activity
-                        </Label>
-                        <p className="text-sm">
-                          {new Date(
-                            trelloData.dateLastActivity
-                          ).toLocaleDateString("en-US", {
-                            year: "numeric",
-                            month: "short",
-                            day: "numeric",
-                            hour: "2-digit",
-                            minute: "2-digit",
-                          })}
-                        </p>
-                      </div>
-                    )}
-                  </div>
-
-                  {/* Labels */}
-                  {trelloData.labels.length > 0 && (
-                    <div className="flex flex-col gap-1.5">
-                      <Label className="text-xs text-muted-foreground">
-                        Labels
-                      </Label>
-                      <div className="flex flex-wrap gap-1.5">
-                        {trelloData.labels.map((label) => (
-                          <Badge
-                            key={label.id}
-                            variant="secondary"
-                            className={labelBadgeClass(label.color)}
-                          >
-                            {label.name}
-                          </Badge>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Members */}
-                  {trelloData.members.length > 0 && (
-                    <div className="flex flex-col gap-1.5">
-                      <Label className="text-xs text-muted-foreground">
-                        Members
-                      </Label>
-                      <div className="flex flex-wrap gap-2">
-                        {trelloData.members.map((m) => (
-                          <div
-                            key={m.id}
-                            className="flex items-center gap-1.5 rounded-md bg-muted px-2 py-1 text-xs"
-                          >
-                            <div className="h-5 w-5 rounded-full bg-primary/20 flex items-center justify-center text-[10px] font-semibold text-primary">
-                              {m.fullName
-                                .split(" ")
-                                .map((n) => n[0])
-                                .join("")
-                                .slice(0, 2)
-                                .toUpperCase()}
-                            </div>
-                            <span>{m.fullName}</span>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Custom Fields */}
-                  {trelloData.customFields.length > 0 && (
-                    <div className="flex flex-col gap-1.5">
-                      <Label className="text-xs text-muted-foreground">
-                        Custom Fields
-                      </Label>
-                      <div className="grid grid-cols-2 gap-3">
-                        {trelloData.customFields.map((cf) => (
-                          <div
-                            key={cf.id}
-                            className="rounded-md border bg-muted/30 px-3 py-2"
-                          >
-                            <p className="text-xs text-muted-foreground font-medium">
-                              {cf.fieldName}
-                            </p>
-                            <p className="text-sm mt-0.5">
-                              {cf.value || "—"}
-                            </p>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Checklists */}
-                  {trelloData.checklists.length > 0 && (
-                    <div className="flex flex-col gap-2">
-                      <Label className="text-xs text-muted-foreground">
-                        Checklists
-                      </Label>
-                      {trelloData.checklists.map((cl) => (
-                        <div
-                          key={cl.id}
-                          className="rounded-md border bg-muted/30 px-3 py-2"
-                        >
-                          <p className="text-xs font-semibold mb-1.5">
-                            {cl.name}
-                          </p>
-                          <ul className="space-y-1">
-                            {cl.checkItems.map((ci) => (
-                              <li
-                                key={ci.id}
-                                className="flex items-center gap-2 text-xs"
-                              >
-                                <span
-                                  className={`inline-flex h-3.5 w-3.5 shrink-0 items-center justify-center rounded border ${ci.state === "complete"
-                                      ? "bg-emerald-500 border-emerald-500 text-white"
-                                      : "border-muted-foreground/30"
-                                    }`}
-                                >
-                                  {ci.state === "complete" && (
-                                    <svg
-                                      className="h-2.5 w-2.5"
-                                      fill="none"
-                                      viewBox="0 0 24 24"
-                                      strokeWidth={3}
-                                      stroke="currentColor"
-                                    >
-                                      <path
-                                        strokeLinecap="round"
-                                        strokeLinejoin="round"
-                                        d="M4.5 12.75l6 6 9-13.5"
-                                      />
-                                    </svg>
-                                  )}
-                                </span>
-                                <span
-                                  className={
-                                    ci.state === "complete"
-                                      ? "line-through text-muted-foreground"
-                                      : ""
-                                  }
-                                >
-                                  {ci.name}
-                                </span>
-                              </li>
-                            ))}
-                          </ul>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-
-                  {/* Attachments */}
-                  {trelloData.attachments.length > 0 && (
-                    <div className="flex flex-col gap-1.5">
-                      <Label className="text-xs text-muted-foreground">
-                        Attachments ({trelloData.attachments.length})
-                      </Label>
-                      <div className="space-y-1.5">
-                        {trelloData.attachments.map((att) => (
-                          <a
-                            key={att.id}
-                            href={att.url}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="flex items-center gap-2 rounded-md border bg-muted/30 px-3 py-2 text-xs hover:bg-muted/60 transition-colors"
-                          >
-                            <svg
-                              className="h-4 w-4 text-muted-foreground shrink-0"
-                              fill="none"
-                              viewBox="0 0 24 24"
-                              strokeWidth={1.5}
-                              stroke="currentColor"
-                            >
-                              <path
-                                strokeLinecap="round"
-                                strokeLinejoin="round"
-                                d="M18.375 12.739l-7.693 7.693a4.5 4.5 0 01-6.364-6.364l10.94-10.94A3 3 0 1119.5 7.372L8.552 18.32m.009-.01l-.01.01m5.699-9.941l-7.81 7.81a1.5 1.5 0 002.112 2.13"
-                              />
-                            </svg>
-                            <span className="truncate text-primary font-medium">
-                              {att.name}
-                            </span>
-                            <span className="ml-auto text-muted-foreground shrink-0">
-                              {new Date(att.date).toLocaleDateString()}
-                            </span>
-                          </a>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Trello Link */}
-                  {trelloData.url && (
-                    <div className="flex flex-col gap-1.5">
-                      <Label className="text-xs text-muted-foreground">
-                        Trello Card Link
-                      </Label>
-                      <a
-                        href={trelloData.url}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="text-sm text-primary hover:underline truncate"
-                      >
-                        {trelloData.url}
-                      </a>
-                    </div>
-                  )}
-                </div>
-              </>
-            )}
-
-            {error && (
-              <p className="rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">
-                {error}
-              </p>
-            )}
-
-            <div className="flex gap-3 pt-1">
-              <Button type="submit" disabled={isPending}>
-                {isPending ? "Creating…" : "Create Task"}
-              </Button>
-              <Button
-                type="button"
-                variant="outline"
+            {/* Category dropdown */}
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="category_code">Category Name *</Label>
+              <Select
+                value={categoryCode}
+                onValueChange={setCategoryCode}
                 disabled={isPending}
-                onClick={() => window.history.back()}
               >
-                Cancel
-              </Button>
+                <SelectTrigger id="category_code">
+                  <SelectValue placeholder="Select category" />
+                </SelectTrigger>
+                <SelectContent>
+                  {CATEGORIES.map((cat) => (
+                    <SelectItem key={cat.code} value={cat.code}>
+                      <span className="font-mono font-semibold">
+                        {cat.code}
+                      </span>
+                      {" - "}
+                      <span>{cat.label}</span>
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
-          </form>
-        </CardContent>
-      </Card>
-    </div>
+
+            {/* Complexity dropdown */}
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="complexity">Complexity *</Label>
+              <Select
+                value={complexity}
+                onValueChange={setComplexity}
+                disabled={isPending}
+              >
+                <SelectTrigger id="complexity">
+                  <SelectValue placeholder="Select complexity" />
+                </SelectTrigger>
+                <SelectContent>
+                  {COMPLEXITIES.map((c) => (
+                    <SelectItem key={c} value={c}>
+                      Complexity {c}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            {/* Work Type dropdown */}
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="work_type">Type of Work *</Label>
+              <Select
+                value={workType}
+                onValueChange={(val) => setWorkType(val as "New" | "Old")}
+                disabled={isPending}
+              >
+                <SelectTrigger id="work_type">
+                  <SelectValue placeholder="Select work type" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="New">New (V1)</SelectItem>
+                  <SelectItem value="Old">Old / Revision (V2+)</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            {/* Sr No (Read-only display) */}
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="sr_no">Sr. No. (Auto Generated)</Label>
+              <Input
+                id="sr_no"
+                name="sr_no"
+                value={srNoFormatted}
+                readOnly
+                disabled
+                className="bg-muted font-mono font-semibold"
+              />
+            </div>
+          </div>
+
+          {/* Reference Image Upload Field */}
+          <div className="flex flex-col gap-2">
+            <Label htmlFor="reference_image">Reference Image</Label>
+            <div className="flex flex-col sm:flex-row items-start gap-4">
+              <label
+                htmlFor="reference_image"
+                className="flex cursor-pointer flex-col items-center justify-center rounded-lg border-2 border-dashed border-muted-foreground/25 p-4 text-center hover:border-primary/50 hover:bg-muted/30 transition-colors w-full sm:w-auto min-w-[200px]"
+              >
+                <ImageIcon className="h-6 w-6 text-muted-foreground mb-1" />
+                <span className="text-xs font-medium text-foreground">
+                  Upload Reference Image
+                </span>
+                <span className="text-[10px] text-muted-foreground">
+                  PNG, JPG, WEBP up to 10MB
+                </span>
+                <input
+                  id="reference_image"
+                  name="reference_image"
+                  type="file"
+                  accept="image/*"
+                  onChange={handleImageChange}
+                  className="hidden"
+                  disabled={isPending}
+                />
+              </label>
+
+              {imagePreview && (
+                <div className="relative h-24 w-24 overflow-hidden rounded-lg border border-border bg-muted">
+                  <img
+                    src={imagePreview}
+                    alt="Reference preview"
+                    className="h-full w-full object-cover"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setImagePreview(null)}
+                    className="absolute top-1 right-1 rounded-full bg-background/80 p-1 text-foreground hover:bg-background"
+                  >
+                    <X className="h-3 w-3" />
+                  </button>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Standard task details */}
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="title">Task Title / Name</Label>
+            <Input
+              id="title"
+              name="title"
+              placeholder={`Default: ${customerProjectNo || "Customer Project Name/No."}`}
+              disabled={isPending}
+              value={title}
+              onChange={(e) => setTitle(e.target.value)}
+            />
+            <p className="text-xs text-muted-foreground">
+              Leave blank to default to Customer Project No.
+            </p>
+          </div>
+
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="description">Description / Work Notes</Label>
+            <Textarea
+              id="description"
+              name="description"
+              placeholder="Provide design dimensions, stone sizes, or special instructions..."
+              rows={3}
+              disabled={isPending}
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+            />
+          </div>
+
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="points">Points</Label>
+              <Input
+                id="points"
+                name="points"
+                type="number"
+                min={0}
+                placeholder="e.g. 10"
+                disabled={isPending}
+                value={points}
+                onChange={(e) => setPoints(e.target.value)}
+              />
+            </div>
+
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="deadline">Deadline</Label>
+              <Input
+                id="deadline"
+                name="deadline"
+                type="date"
+                disabled={isPending}
+                value={deadline}
+                onChange={(e) => setDeadline(e.target.value)}
+              />
+            </div>
+          </div>
+
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="drive_folder_link">Google Drive Folder Link</Label>
+            <Input
+              id="drive_folder_link"
+              name="drive_folder_link"
+              placeholder="https://drive.google.com/drive/folders/..."
+              disabled={isPending}
+              value={driveLink}
+              onChange={(e) => setDriveLink(e.target.value)}
+            />
+          </div>
+
+          <div className="flex flex-col gap-1.5">
+            <Label>Assign to Designer</Label>
+            <Select
+              value={assignedTo}
+              onValueChange={setAssignedTo}
+              disabled={isPending}
+            >
+              <SelectTrigger>
+                <SelectValue placeholder="Select a designer..." />
+              </SelectTrigger>
+              <SelectContent>
+                {designers.map((d) => (
+                  <SelectItem key={d.id} value={d.id}>
+                    {d.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div className="mt-2 flex justify-end">
+            <Button type="submit" disabled={isPending} className="w-full sm:w-auto">
+              {isPending ? "Creating Task..." : "Create Task"}
+            </Button>
+          </div>
+        </form>
+      </CardContent>
+    </Card>
   )
 }
