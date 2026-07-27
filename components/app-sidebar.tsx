@@ -5,6 +5,7 @@ import {
   PlusSquare,
   ShieldCheck,
   Users,
+  Building2,
   BarChart2,
   Wallet,
   CalendarClock,
@@ -59,8 +60,11 @@ function getNavItems(roles: string[]): { group: string; items: NavItem[] }[] {
         ],
       },
       {
-        group: "Team",
-        items: [{ label: "Members", href: "/team", icon: Users }],
+        group: "Directory",
+        items: [
+          { label: "Members", href: "/team", icon: Users },
+          { label: "Customers", href: "/customers", icon: Building2 },
+        ],
       },
       {
         group: "Finance",
@@ -93,6 +97,10 @@ function getNavItems(roles: string[]): { group: string; items: NavItem[] }[] {
         ],
       },
       {
+        group: "Directory",
+        items: [{ label: "Customers", href: "/customers", icon: Building2 }],
+      },
+      {
         group: "Earnings",
         items: [{ label: "Points Log", href: "/points", icon: BarChart2 }],
       },
@@ -113,6 +121,10 @@ function getNavItems(roles: string[]): { group: string; items: NavItem[] }[] {
     {
       group: "Work",
       items: [{ label: "Tasks", href: "/tasks", icon: ListTodo }],
+    },
+    {
+      group: "Directory",
+      items: [{ label: "Customers", href: "/customers", icon: Building2 }],
     },
     {
       group: "Earnings",
