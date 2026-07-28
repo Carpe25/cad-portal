@@ -9,7 +9,6 @@ import {
   STATUS_LABELS_FULL as STATUS_LABELS,
   STATUS_COLORS,
   PRIORITY_COLORS,
-  SPEED_COLORS,
   labelBadgeClass,
 } from "@/lib/task-utils"
 import { ParsedTrelloCard } from "@/lib/trello-types"
@@ -57,6 +56,7 @@ type Submission = {
   reviewer_name: string | null
   outcome: string
   remarks: string | null
+  designer_notes: string | null
 }
 
 const OUTCOME_BADGE: Record<string, string> = {
@@ -65,12 +65,15 @@ const OUTCOME_BADGE: Record<string, string> = {
   approved:
     "border-emerald-500/20 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400",
   sent_back: "border-destructive/20 bg-destructive/10 text-destructive",
+  reopened_for_revision:
+    "border-purple-500/30 bg-purple-500/10 text-purple-600 dark:text-purple-400 font-medium",
 }
 
 const OUTCOME_LABEL: Record<string, string> = {
   pending: "Pending Review",
   approved: "Approved",
   sent_back: "Sent Back",
+  reopened_for_revision: "Reopened for Client",
 }
 
 export default async function TaskDetailPage({
@@ -122,16 +125,21 @@ export default async function TaskDetailPage({
   const designers =
     isManager || isQC
       ? ((await sql`SELECT id, name FROM users WHERE active = true AND roles @> ARRAY['designer']::text[] ORDER BY name`) as {
-          id: string
-          name: string
-        }[])
+        id: string
+        name: string
+      }[])
       : []
 
+  const canSeeCustomerName = isManager || isQC
   const taskHeading = task.customer_project_no || task.title
+
+  const customerLabel = canSeeCustomerName
+    ? `Client: ${task.client_name}`
+    : `Customer Code: ${task.customer_code ?? "—"}`
 
   const descriptionLine = [
     task.cd_project_no ? `CD Project No: ${task.cd_project_no}` : null,
-    `Client: ${task.client_name}`,
+    customerLabel,
     task.designer_name ? `Designer: ${task.designer_name}` : null,
   ]
     .filter(Boolean)
@@ -149,9 +157,9 @@ export default async function TaskDetailPage({
             <div className="flex items-center gap-2">
               <Badge
                 variant="outline"
-                className={SPEED_COLORS[task.speed || "N"] || PRIORITY_COLORS[task.priority]}
+                className={`capitalize ${PRIORITY_COLORS[task.priority] ?? ""}`}
               >
-                Speed: {task.speed || (task.priority === "high" ? "U" : "N")}
+                {task.priority}
               </Badge>
               <Badge
                 variant="outline"
@@ -172,6 +180,23 @@ export default async function TaskDetailPage({
                 Task Details
               </h2>
               <dl className="grid grid-cols-2 gap-x-6 gap-y-4 text-sm sm:grid-cols-4">
+                {canSeeCustomerName ? (
+                  <div>
+                    <dt className="text-xs text-muted-foreground">Customer</dt>
+                    <dd className="mt-0.5 font-medium">{task.client_name}</dd>
+                  </div>
+                ) : (
+                  <div>
+                    <dt className="text-xs text-muted-foreground">Customer Code</dt>
+                    <dd className="mt-0.5 font-mono font-medium">{task.customer_code ?? "—"}</dd>
+                  </div>
+                )}
+                {canSeeCustomerName && task.customer_code && (
+                  <div>
+                    <dt className="text-xs text-muted-foreground">Customer Code</dt>
+                    <dd className="mt-0.5 font-mono font-medium">{task.customer_code}</dd>
+                  </div>
+                )}
                 {task.cd_project_no && (
                   <div>
                     <dt className="text-xs text-muted-foreground">CD Project No.</dt>
@@ -233,10 +258,10 @@ export default async function TaskDetailPage({
                   <dd className="mt-0.5 font-medium">
                     {task.deadline
                       ? new Date(task.deadline).toLocaleDateString("en-IN", {
-                          day: "numeric",
-                          month: "long",
-                          year: "numeric",
-                        })
+                        day: "numeric",
+                        month: "long",
+                        year: "numeric",
+                      })
                       : "—"}
                   </dd>
                 </div>
@@ -437,11 +462,10 @@ export default async function TaskDetailPage({
                               {cl.checkItems.map((ci) => (
                                 <li key={ci.id} className="flex items-center gap-2 text-xs">
                                   <span
-                                    className={`inline-flex h-3.5 w-3.5 shrink-0 items-center justify-center rounded border ${
-                                      ci.state === "complete"
+                                    className={`inline-flex h-3.5 w-3.5 shrink-0 items-center justify-center rounded border ${ci.state === "complete"
                                         ? "bg-emerald-500 border-emerald-500 text-white"
                                         : "border-muted-foreground/30"
-                                    }`}
+                                      }`}
                                   >
                                     {ci.state === "complete" && (
                                       <svg
@@ -541,6 +565,7 @@ export default async function TaskDetailPage({
                 id: task.id,
                 status: task.status,
                 assigned_to: task.assigned_to,
+                drive_folder_link: task.drive_folder_link,
               }}
               session={{
                 id: session.id,
@@ -549,9 +574,9 @@ export default async function TaskDetailPage({
               pendingSubmission={
                 pendingSubmission
                   ? {
-                      id: pendingSubmission.id,
-                      drive_link: pendingSubmission.drive_link,
-                    }
+                    id: pendingSubmission.id,
+                    drive_link: pendingSubmission.drive_link,
+                  }
                   : null
               }
               designers={designers}
@@ -568,20 +593,30 @@ export default async function TaskDetailPage({
                 </div>
                 <Separator />
                 <div className="divide-y divide-border">
-                  {submissions.map((sub) => (
-                    <div key={sub.id} className="px-5 py-4">
-                      <div className="flex items-center justify-between gap-2">
-                        <div className="flex items-center gap-2">
-                          <span className="font-mono text-xs font-semibold">
-                            {sub.version}
-                          </span>
-                          <Badge
-                            variant="outline"
-                            className={`text-xs ${OUTCOME_BADGE[sub.outcome] ?? ""}`}
-                          >
-                            {OUTCOME_LABEL[sub.outcome] ?? sub.outcome}
-                          </Badge>
-                        </div>
+                  {submissions.map((sub, idx) => {
+                    const isReopened =
+                      sub.outcome === "reopened_for_revision" ||
+                      (sub.outcome === "approved" &&
+                        task.status !== "client_ready" &&
+                        task.status !== "closed" &&
+                        Boolean(task.revision_notes) &&
+                        idx === submissions.findLastIndex((s) => s.outcome === "approved" || s.outcome === "reopened_for_revision"))
+                    const outcomeKey = isReopened ? "reopened_for_revision" : sub.outcome
+
+                    return (
+                      <div key={sub.id} className="px-5 py-4">
+                        <div className="flex items-center justify-between gap-2">
+                          <div className="flex items-center gap-2">
+                            <span className="font-mono text-xs font-semibold">
+                              {sub.version}
+                            </span>
+                            <Badge
+                              variant="outline"
+                              className={`text-xs ${OUTCOME_BADGE[outcomeKey] ?? ""}`}
+                            >
+                              {OUTCOME_LABEL[outcomeKey] ?? outcomeKey}
+                            </Badge>
+                          </div>
                         <p className="text-xs text-muted-foreground">
                           {new Date(sub.submitted_at).toLocaleString("en-IN", {
                             day: "numeric",
@@ -604,6 +639,16 @@ export default async function TaskDetailPage({
                       >
                         Open CAD file →
                       </a>
+                      {sub.designer_notes && (
+                        <div className="mt-2.5 rounded-lg border border-primary/20 bg-primary/8 px-3.5 py-2.5">
+                          <p className="text-xs font-semibold text-primary">
+                            Designer Description / Notes
+                          </p>
+                          <p className="mt-0.5 text-xs text-foreground">
+                            {sub.designer_notes}
+                          </p>
+                        </div>
+                      )}
                       {sub.remarks && (
                         <div className="mt-2.5 rounded-lg border border-destructive/20 bg-destructive/8 px-3.5 py-2.5">
                           <p className="text-xs font-semibold text-destructive">
@@ -615,7 +660,7 @@ export default async function TaskDetailPage({
                         </div>
                       )}
                     </div>
-                  ))}
+                  )})}
                 </div>
               </div>
             )}

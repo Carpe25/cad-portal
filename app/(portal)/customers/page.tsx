@@ -19,6 +19,10 @@ export default async function CustomersPage() {
   const session = await getSession()
   if (!session) redirect("/login")
 
+  const isManager = session.roles.includes("manager")
+  const isQC = session.roles.includes("qc")
+  if (!isManager && !isQC) redirect("/dashboard")
+
   return (
     <main className="min-h-full">
       <div className="mx-auto w-full max-w-7xl px-4 py-8 sm:px-6 lg:px-8">

@@ -31,6 +31,7 @@ type Task = {
   cd_project_no: string | null
   speed: string | null
   client_name: string
+  customer_code: string | null
   status: string
   priority: string
   deadline: string | null
@@ -124,7 +125,7 @@ async function TasksWorkspace({
   canManage: boolean
 }) {
   const allTasks = (await sql`
-    SELECT t.id, t.readable_id, t.title, t.customer_project_no, t.cd_project_no, t.speed, t.client_name, t.status,
+    SELECT t.id, t.readable_id, t.title, t.customer_project_no, t.cd_project_no, t.speed, t.client_name, t.customer_code, t.status,
            t.priority, t.deadline, t.points, t.created_at,
            u.name AS designer_name,
            (t.assigned_to = ${session.id}) AS is_mine,
@@ -275,13 +276,13 @@ async function TasksWorkspace({
         {/* Task sections */}
         <div className="space-y-10">
           {sections.map((sec) => (
-            <TaskSection key={sec.id} {...sec} />
+            <TaskSection key={sec.id} {...sec} canManage={canManage} />
           ))}
         </div>
 
         {/* Sidebar */}
         <aside className="space-y-4">
-          {recommendedTask && <FocusCard task={recommendedTask} />}
+          {recommendedTask && <FocusCard task={recommendedTask} canManage={canManage} />}
           <WorkflowCard tasks={allTasks} />
         </aside>
       </div>
@@ -354,6 +355,7 @@ function TaskSection({
   tasks,
   showDesigner,
   useAutoPriority,
+  canManage,
 }: {
   id: string
   title: string
@@ -361,6 +363,7 @@ function TaskSection({
   tasks: Task[]
   showDesigner: boolean
   useAutoPriority: boolean
+  canManage: boolean
 }) {
   return (
     <section id={id} className="scroll-mt-20 space-y-3">
@@ -395,7 +398,7 @@ function TaskSection({
           <div className="hidden grid-cols-[16px_minmax(0,1fr)_140px_100px_80px_80px] items-center gap-4 border-b border-border bg-muted/30 px-4 py-2.5 text-xs font-medium text-muted-foreground lg:grid">
             <span />
             <span>Task</span>
-            {showDesigner ? <span>Designer</span> : <span>Client</span>}
+            {showDesigner ? <span>Designer</span> : <span>{canManage ? "Client" : "Customer Code"}</span>}
             <span>Speed</span>
             <span>Status</span>
             <span className="text-right">Age</span>
@@ -414,6 +417,7 @@ function TaskSection({
                   priority={priority}
                   showDesigner={showDesigner}
                   isLast={isLast}
+                  canManage={canManage}
                 />
               )
             })}
@@ -429,12 +433,18 @@ function TaskRow({
   task,
   priority,
   showDesigner,
+  canManage,
 }: {
   task: Task
   priority: string
   showDesigner: boolean
   isLast: boolean
+  canManage: boolean
 }) {
+  const customerDisplay = canManage
+    ? task.client_name
+    : (task.customer_code ? `Code: ${task.customer_code}` : "—")
+
   return (
     <Link
       href={`/tasks/${task.id}`}
@@ -459,7 +469,7 @@ function TaskRow({
           <span className="truncate">
             {showDesigner
               ? (task.designer_name ?? "Unassigned")
-              : task.client_name}
+              : customerDisplay}
           </span>
           {task.deadline && (
             <>
@@ -485,7 +495,7 @@ function TaskRow({
 
       {/* Desktop: designer or client label (second column) */}
       <span className="hidden truncate text-sm text-muted-foreground lg:block">
-        {showDesigner ? (task.designer_name ?? "—") : task.client_name}
+        {showDesigner ? (task.designer_name ?? "—") : customerDisplay}
       </span>
 
       {/* Speed badge */}
@@ -517,7 +527,11 @@ function TaskRow({
 }
 
 // --- Focus Card ---
-function FocusCard({ task }: { task: Task }) {
+function FocusCard({ task, canManage }: { task: Task; canManage: boolean }) {
+  const customerDisplay = canManage
+    ? task.client_name
+    : (task.customer_code ? `Code: ${task.customer_code}` : "—")
+
   return (
     <div className="rounded-xl border border-primary/20 bg-primary/5 p-4">
       <div className="flex items-center gap-2">
@@ -532,7 +546,7 @@ function FocusCard({ task }: { task: Task }) {
         </p>
         <p className="text-xs text-muted-foreground">
           <span className="font-mono">{task.cd_project_no || task.readable_id}</span> ·{" "}
-          {task.client_name}
+          {customerDisplay}
         </p>
       </div>
       <div className="mt-4 flex items-center gap-2">

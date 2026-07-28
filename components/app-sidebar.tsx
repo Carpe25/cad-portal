@@ -123,10 +123,6 @@ function getNavItems(roles: string[]): { group: string; items: NavItem[] }[] {
       items: [{ label: "Tasks", href: "/tasks", icon: ListTodo }],
     },
     {
-      group: "Directory",
-      items: [{ label: "Customers", href: "/customers", icon: Building2 }],
-    },
-    {
       group: "Earnings",
       items: [{ label: "Points Log", href: "/points", icon: BarChart2 }],
     },

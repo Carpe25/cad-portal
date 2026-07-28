@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useTransition, ChangeEvent } from "react"
-import { createTaskAction } from "./actions"
+import { createTaskAction, createDriveFolderAction } from "./actions"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -15,7 +15,8 @@ import {
 } from "@/components/ui/select"
 import { Card, CardContent } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
-import { CalendarIcon, Image as ImageIcon, Sparkles, X } from "lucide-react"
+import { CalendarIcon, Image as ImageIcon, Sparkles, X, FolderPlus, Check } from "lucide-react"
+
 
 const CATEGORIES = [
   { code: "RN", label: "Ring" },
@@ -32,6 +33,21 @@ const CATEGORIES = [
 
 const COMPLEXITIES = ["A", "B", "C", "D"]
 const SPEEDS = ["U", "N"]
+
+function formatDateForFolderName(dateStr: string): string {
+  if (!dateStr) return ""
+  const parts = dateStr.split("-")
+  if (parts.length !== 3) return dateStr
+  const year = parts[0].slice(-2)
+  const monthIdx = parseInt(parts[1], 10) - 1
+  const day = parts[2].padStart(2, "0")
+  const months = [
+    "Jan", "Feb", "Mar", "Apr", "May", "Jun",
+    "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"
+  ]
+  const monthName = months[monthIdx] || parts[1]
+  return `${day}-${monthName}-${year}`
+}
 
 export function CreateTaskForm({
   designers,
@@ -55,9 +71,16 @@ export function CreateTaskForm({
   const [categoryCode, setCategoryCode] = useState("RN")
   const [complexity, setComplexity] = useState("A")
   const [workType, setWorkType] = useState<"New" | "Old">("New")
+  const [versionInput, setVersionInput] = useState("V1")
   const [requestDate, setRequestDate] = useState(
     new Date().toISOString().split("T")[0]
   )
+
+  // Handle Work Type change
+  const handleWorkTypeChange = (val: "New" | "Old") => {
+    setWorkType(val)
+    setVersionInput(val === "New" ? "V1" : "V2")
+  }
 
   // Standard task fields
   const [title, setTitle] = useState("")
@@ -75,10 +98,46 @@ export function CreateTaskForm({
   const srNoFormatted = String(nextSrNoCount).padStart(4, "0")
 
   // Auto-generate CD Project No.
-  const versionStr = workType === "New" ? "V1" : "V2"
-  const cdProjectNo = `${speed}${selectedCustomerCode}${categoryCode}${complexity}${srNoFormatted}${versionStr}`
+  const cdProjectBase = `${speed}${selectedCustomerCode}${categoryCode}${complexity}${srNoFormatted}`
+  const cdProjectNo = `${cdProjectBase}${versionInput.trim()}`
+
+  // Proposed Google Drive folder name format: U01RND00001_CRkajal1-6-26_V1_01-Jun-26
+  const formattedDate = formatDateForFolderName(requestDate)
+  const folderParts = [
+    cdProjectBase,
+    customerProjectNo.trim(),
+    versionInput.trim(),
+    formattedDate,
+  ].filter(Boolean)
+
+  const proposedFolderName = folderParts.join("_")
+
+
+  // Google Drive folder creation state
+  const [isCreatingDriveFolder, setIsCreatingDriveFolder] = useState(false)
+  const [driveFolderSuccess, setDriveFolderSuccess] = useState(false)
+
+  const handleConnectToDrive = async () => {
+    setError(null)
+    setIsCreatingDriveFolder(true)
+    setDriveFolderSuccess(false)
+    try {
+      const res = await createDriveFolderAction(proposedFolderName)
+      if (res.error) {
+        setError(res.error)
+      } else if (res.folderUrl) {
+        setDriveLink(res.folderUrl)
+        setDriveFolderSuccess(true)
+      }
+    } catch (err: any) {
+      setError(err.message || "Failed to create Google Drive folder.")
+    } finally {
+      setIsCreatingDriveFolder(false)
+    }
+  }
 
   // Update customer when selection changes
+
   const handleCustomerChange = (code: string) => {
     setSelectedCustomerCode(code)
     const cust = customers.find((c) => c.code === code)
@@ -105,27 +164,33 @@ export function CreateTaskForm({
   function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault()
     setError(null)
-    const formData = new FormData(e.currentTarget)
-    formData.set("customer_project_no", customerProjectNo)
-    formData.set("speed", speed)
-    formData.set("customer_code", selectedCustomerCode)
-    formData.set("client_name", clientName)
-    formData.set("category_code", categoryCode)
-    formData.set("complexity", complexity)
-    formData.set("work_type", workType)
-    formData.set("sr_no", srNoFormatted)
-    formData.set("cd_project_no", cdProjectNo)
-    formData.set("request_date", requestDate)
-    formData.set("assigned_to", assignedTo)
-    formData.set("priority", priority)
-
-    // Default title to CD project no. if empty
-    if (!formData.get("title")) {
-      formData.set("title", cdProjectNo)
-    }
+    const refInput = e.currentTarget.querySelector<HTMLInputElement>('input[name="reference_image"]')
+    const refFile = refInput?.files?.[0]
 
     startTransition(async () => {
-      const result = await createTaskAction(formData)
+      const payload = {
+        customer_project_no: customerProjectNo,
+        speed: speed,
+        customer_code: selectedCustomerCode,
+        client_name: clientName,
+        category_code: categoryCode,
+        complexity: complexity,
+        work_type: workType,
+        version: versionInput,
+        sr_no: srNoFormatted,
+        cd_project_no: cdProjectNo,
+        request_date: requestDate,
+        assigned_to: assignedTo,
+        priority: priority,
+        title: title || cdProjectNo,
+        description: description,
+        points: points,
+        deadline: deadline,
+        drive_folder_link: driveLink,
+        referenceImageBase64: imagePreview,
+        referenceImageName: refFile?.name || null,
+      }
+      const result = await createTaskAction(payload)
       if (result?.error) setError(result.error)
     })
   }
@@ -157,7 +222,7 @@ export function CreateTaskForm({
                 variant="secondary"
                 className="bg-primary/10 text-primary font-semibold text-xs"
               >
-                {workType === "New" ? "Version 1" : "Version 2+"}
+                {versionInput || (workType === "New" ? "V1" : "V2")}
               </Badge>
             </div>
           </div>
@@ -200,7 +265,7 @@ export function CreateTaskForm({
             </div>
           </div>
 
-          {/* Grid section 2: Dropdowns for Speed, Customer, Category, Complexity, Work Type */}
+          {/* Grid section 2: Dropdowns for Speed, Customer, Category, Complexity */}
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             {/* Speed dropdown */}
             <div className="flex flex-col gap-1.5">
@@ -298,13 +363,13 @@ export function CreateTaskForm({
             </div>
           </div>
 
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
             {/* Work Type dropdown */}
             <div className="flex flex-col gap-1.5">
               <Label htmlFor="work_type">Type of Work *</Label>
               <Select
                 value={workType}
-                onValueChange={(val) => setWorkType(val as "New" | "Old")}
+                onValueChange={(val) => handleWorkTypeChange(val as "New" | "Old")}
                 disabled={isPending}
               >
                 <SelectTrigger id="work_type">
@@ -315,6 +380,20 @@ export function CreateTaskForm({
                   <SelectItem value="Old">Old / Revision (V2+)</SelectItem>
                 </SelectContent>
               </Select>
+            </div>
+
+            {/* Version Text Field */}
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="version">Version *</Label>
+              <Input
+                id="version"
+                name="version"
+                placeholder="e.g. V1, V2"
+                disabled={isPending}
+                value={versionInput}
+                onChange={(e) => setVersionInput(e.target.value)}
+                className="font-mono font-semibold"
+              />
             </div>
 
             {/* Sr No (Read-only display) */}
@@ -330,6 +409,7 @@ export function CreateTaskForm({
               />
             </div>
           </div>
+
 
           {/* Reference Image Upload Field */}
           <div className="flex flex-col gap-2">
@@ -433,17 +513,50 @@ export function CreateTaskForm({
             </div>
           </div>
 
-          <div className="flex flex-col gap-1.5">
-            <Label htmlFor="drive_folder_link">Google Drive Folder Link</Label>
+          <div className="flex flex-col gap-2 rounded-xl border border-primary/20 bg-primary/5 p-4">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div>
+                <Label htmlFor="drive_folder_link" className="font-semibold text-foreground">
+                  Google Drive Folder
+                </Label>
+                <div className="mt-1 flex items-center gap-2 text-xs text-muted-foreground">
+                  <span>Proposed Name:</span>
+                  <Badge variant="outline" className="font-mono text-xs font-semibold bg-background">
+                    {proposedFolderName}
+                  </Badge>
+                </div>
+              </div>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                disabled={isPending || isCreatingDriveFolder}
+                onClick={handleConnectToDrive}
+                className="gap-2 border-primary/40 text-primary hover:bg-primary/10 self-start sm:self-auto"
+              >
+                <FolderPlus className="h-4 w-4" />
+                {isCreatingDriveFolder ? "Creating Folder..." : "Connect to Drive"}
+              </Button>
+            </div>
+
             <Input
               id="drive_folder_link"
               name="drive_folder_link"
               placeholder="https://drive.google.com/drive/folders/..."
-              disabled={isPending}
+              disabled={isPending || isCreatingDriveFolder}
               value={driveLink}
               onChange={(e) => setDriveLink(e.target.value)}
+              className="bg-background"
             />
+
+            {driveFolderSuccess && (
+              <div className="flex items-center gap-1.5 text-xs font-medium text-emerald-600 dark:text-emerald-400">
+                <Check className="h-3.5 w-3.5" />
+                Folder created & connected to Drive successfully!
+              </div>
+            )}
           </div>
+
 
           <div className="flex flex-col gap-1.5">
             <Label>Assign to Designer</Label>

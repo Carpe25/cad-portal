@@ -1,15 +1,19 @@
 "use client"
 
 export function DriveLink({ href }: { href: string }) {
+  if (!href) return null
+
   return (
-    <a
-      href={href}
-      target="_blank"
-      rel="noopener noreferrer"
-      onClick={(e) => e.stopPropagation()}
-      className="text-xs text-primary hover:underline"
+    <button
+      type="button"
+      onClick={(e) => {
+        e.preventDefault()
+        e.stopPropagation()
+        window.open(href, "_blank", "noopener,noreferrer")
+      }}
+      className="text-xs font-medium text-primary hover:underline cursor-pointer"
     >
       Open CAD →
-    </a>
+    </button>
   )
 }

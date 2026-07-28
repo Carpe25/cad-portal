@@ -16,6 +16,8 @@ type PointEntry = {
   id: string
   task_id: string
   task_title: string
+  customer_project_no: string | null
+  cd_project_no: string | null
   readable_id: string
   points: number
   credited_at: string
@@ -71,7 +73,7 @@ async function PointsContent({
 
   const entries = filterUserId
     ? ((await sql`
-        SELECT pl.id, pl.task_id, t.title AS task_title, t.readable_id, pl.points,
+        SELECT pl.id, pl.task_id, t.title AS task_title, t.customer_project_no, t.cd_project_no, t.readable_id, pl.points,
                pl.credited_at, pl.month, u.name AS designer_name
         FROM points_log pl
         JOIN tasks t ON pl.task_id = t.id
@@ -80,7 +82,7 @@ async function PointsContent({
         ORDER BY pl.credited_at DESC
       `) as PointEntry[])
     : ((await sql`
-        SELECT pl.id, pl.task_id, t.title AS task_title, t.readable_id, pl.points,
+        SELECT pl.id, pl.task_id, t.title AS task_title, t.customer_project_no, t.cd_project_no, t.readable_id, pl.points,
                pl.credited_at, pl.month, u.name AS designer_name
         FROM points_log pl
         JOIN tasks t ON pl.task_id = t.id
@@ -181,10 +183,10 @@ async function PointsContent({
                 {/* Title + meta */}
                 <div className="min-w-0 flex-1">
                   <p className="truncate text-sm font-medium text-foreground group-hover:text-primary">
-                    {e.task_title}
+                    {e.customer_project_no || e.task_title}
                   </p>
                   <div className="mt-0.5 flex items-center gap-1.5 text-xs text-muted-foreground">
-                    <span className="font-mono">{e.readable_id}</span>
+                    <span className="font-mono">{e.cd_project_no || e.readable_id}</span>
                     {isManager && (
                       <>
                         <span>·</span>
@@ -199,7 +201,7 @@ async function PointsContent({
 
                 {/* Task ID (desktop) */}
                 <span className="hidden font-mono text-xs text-muted-foreground lg:block">
-                  {e.readable_id}
+                  {e.cd_project_no || e.readable_id}
                 </span>
 
                 {/* Points (desktop) */}
