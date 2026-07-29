@@ -33,13 +33,79 @@ export async function assignToMeAction(taskId: string) {
   revalidatePath("/tasks")
 }
 
-export async function submitForQCAction(taskId: string, driveLink: string) {
+export async function submitForQCAction(taskId: string, driveLink: string, designerNotes?: string) {
   const session = await getSession()
   if (!session) return { error: "Unauthorized" }
 
   if (!driveLink.trim()) return { error: "Drive link is required" }
 
+  // Ensure column exists
+  await sql`ALTER TABLE submissions ADD COLUMN IF NOT EXISTS designer_notes TEXT`
+
   // Count existing submissions to determine version number
+  const countRows = await sql`
+    SELECT COUNT(*) FROM submissions WHERE task_id = ${taskId}
+  `
+  const count = Number((countRows[0] as { count: string | number }).count)
+  const version = `V${count + 1}`
+
+  await sql`
+    INSERT INTO submissions (task_id, version, drive_link, submitted_by, outcome, designer_notes)
+    VALUES (${taskId}, ${version}, ${driveLink.trim()}, ${session.id}, 'pending', ${designerNotes ? designerNotes.trim() : null})
+  `
+
+  await sql`
+    UPDATE tasks SET status = 'in_qc_review' WHERE id = ${taskId}
+  `
+
+  revalidatePath(`/tasks/${taskId}`)
+  revalidatePath("/tasks")
+}
+
+export async function submitForQCWithFilesAction(formData: FormData) {
+  const session = await getSession()
+  if (!session) return { error: "Unauthorized" }
+
+  const taskId = formData.get("taskId") as string
+  let driveLink = (formData.get("driveLink") as string) || ""
+
+  if (!taskId) return { error: "Task ID is required" }
+
+  const taskRows = await sql`SELECT drive_folder_link FROM tasks WHERE id = ${taskId}`
+  if (!taskRows.length) return { error: "Task not found" }
+
+  const taskDriveFolderLink = taskRows[0].drive_folder_link as string | null
+  const files = formData.getAll("files") as File[]
+
+  if (taskDriveFolderLink) {
+    const { extractDriveFolderId, uploadFilesToDriveFolder } = await import("@/lib/drive")
+    const folderId = extractDriveFolderId(taskDriveFolderLink)
+
+    if (folderId && files.length > 0 && files[0] && files[0].size > 0) {
+      try {
+        const fileBuffers = await Promise.all(
+          files.map(async (file) => {
+            const arrayBuffer = await file.arrayBuffer()
+            return {
+              name: file.name,
+              mimeType: file.type || "application/octet-stream",
+              buffer: Buffer.from(arrayBuffer),
+            }
+          })
+        )
+        await uploadFilesToDriveFolder(folderId, fileBuffers)
+      } catch (uploadError: any) {
+        console.error("Error uploading CAD files to Google Drive:", uploadError)
+        return { error: uploadError.message || "Failed to upload files to Google Drive." }
+      }
+    }
+    driveLink = taskDriveFolderLink
+  }
+
+  if (!driveLink.trim()) {
+    return { error: "Drive link or CAD files are required for submission." }
+  }
+
   const countRows = await sql`
     SELECT COUNT(*) FROM submissions WHERE task_id = ${taskId}
   `
@@ -58,6 +124,7 @@ export async function submitForQCAction(taskId: string, driveLink: string) {
   revalidatePath(`/tasks/${taskId}`)
   revalidatePath("/tasks")
 }
+
 
 export async function approveSubmissionAction(
   taskId: string,
@@ -155,6 +222,22 @@ export async function reopenForClientRevisionAction(
   const session = await getSession()
   if (!session || !session.roles.includes("manager"))
     return { error: "Unauthorized" }
+
+  // Drop restrictive check constraint if present in DB schema
+  try {
+    await sql`
+      ALTER TABLE submissions DROP CONSTRAINT IF EXISTS submissions_outcome_check;
+    `
+  } catch (err) {
+    console.error("Could not drop constraint submissions_outcome_check:", err)
+  }
+
+  // Update outcome of currently approved submission(s) for this task to 'reopened_for_revision'
+  await sql`
+    UPDATE submissions
+    SET outcome = 'reopened_for_revision'
+    WHERE task_id = ${taskId} AND outcome = 'approved'
+  `
 
   await sql`
     UPDATE tasks

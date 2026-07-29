@@ -5,6 +5,7 @@ import {
   PlusSquare,
   ShieldCheck,
   Users,
+  Building2,
   BarChart2,
   Wallet,
   CalendarClock,
@@ -59,8 +60,11 @@ function getNavItems(roles: string[]): { group: string; items: NavItem[] }[] {
         ],
       },
       {
-        group: "Team",
-        items: [{ label: "Members", href: "/team", icon: Users }],
+        group: "Directory",
+        items: [
+          { label: "Members", href: "/team", icon: Users },
+          { label: "Customers", href: "/customers", icon: Building2 },
+        ],
       },
       {
         group: "Finance",
@@ -91,6 +95,10 @@ function getNavItems(roles: string[]): { group: string; items: NavItem[] }[] {
           { label: "Create Task", href: "/tasks/new", icon: PlusSquare },
           { label: "QC Queue", href: "/qc-queue", icon: ShieldCheck },
         ],
+      },
+      {
+        group: "Directory",
+        items: [{ label: "Customers", href: "/customers", icon: Building2 }],
       },
       {
         group: "Earnings",

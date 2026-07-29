@@ -19,6 +19,16 @@ type Task = {
   readable_id: string
   title: string
   client_name: string
+  customer_project_no: string | null
+  speed: string | null
+  customer_code: string | null
+  category_code: string | null
+  complexity: string | null
+  work_type: string | null
+  sr_no: string | null
+  cd_project_no: string | null
+  request_date: string | null
+  reference_image: string | null
   style_ref_number: string | null
   description: string | null
   points: number
@@ -46,6 +56,7 @@ type Submission = {
   reviewer_name: string | null
   outcome: string
   remarks: string | null
+  designer_notes: string | null
 }
 
 const OUTCOME_BADGE: Record<string, string> = {
@@ -54,12 +65,15 @@ const OUTCOME_BADGE: Record<string, string> = {
   approved:
     "border-emerald-500/20 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400",
   sent_back: "border-destructive/20 bg-destructive/10 text-destructive",
+  reopened_for_revision:
+    "border-purple-500/30 bg-purple-500/10 text-purple-600 dark:text-purple-400 font-medium",
 }
 
 const OUTCOME_LABEL: Record<string, string> = {
   pending: "Pending Review",
   approved: "Approved",
   sent_back: "Sent Back",
+  reopened_for_revision: "Reopened for Client",
 }
 
 export default async function TaskDetailPage({
@@ -111,13 +125,21 @@ export default async function TaskDetailPage({
   const designers =
     isManager || isQC
       ? ((await sql`SELECT id, name FROM users WHERE active = true AND roles @> ARRAY['designer']::text[] ORDER BY name`) as {
-          id: string
-          name: string
-        }[])
+        id: string
+        name: string
+      }[])
       : []
 
+  const canSeeCustomerName = isManager || isQC
+  const taskHeading = task.customer_project_no || task.title
+
+  const customerLabel = canSeeCustomerName
+    ? `Client: ${task.client_name}`
+    : `Customer Code: ${task.customer_code ?? "—"}`
+
   const descriptionLine = [
-    `Client: ${task.client_name}`,
+    task.cd_project_no ? `CD Project No: ${task.cd_project_no}` : null,
+    customerLabel,
     task.designer_name ? `Designer: ${task.designer_name}` : null,
   ]
     .filter(Boolean)
@@ -128,8 +150,8 @@ export default async function TaskDetailPage({
       <div className="mx-auto w-full max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
         {/* Header */}
         <PageHeader
-          roleLabel={`${task.readable_id}${task.style_ref_number ? ` · ${task.style_ref_number}` : ""}`}
-          title={task.title}
+          roleLabel={task.customer_project_no ? `Customer Project: ${task.customer_project_no}` : (task.cd_project_no || task.readable_id)}
+          title={taskHeading}
           description={descriptionLine}
           action={
             <div className="flex items-center gap-2">
@@ -158,6 +180,75 @@ export default async function TaskDetailPage({
                 Task Details
               </h2>
               <dl className="grid grid-cols-2 gap-x-6 gap-y-4 text-sm sm:grid-cols-4">
+                {canSeeCustomerName ? (
+                  <div>
+                    <dt className="text-xs text-muted-foreground">Customer</dt>
+                    <dd className="mt-0.5 font-medium">{task.client_name}</dd>
+                  </div>
+                ) : (
+                  <div>
+                    <dt className="text-xs text-muted-foreground">Customer Code</dt>
+                    <dd className="mt-0.5 font-mono font-medium">{task.customer_code ?? "—"}</dd>
+                  </div>
+                )}
+                {canSeeCustomerName && task.customer_code && (
+                  <div>
+                    <dt className="text-xs text-muted-foreground">Customer Code</dt>
+                    <dd className="mt-0.5 font-mono font-medium">{task.customer_code}</dd>
+                  </div>
+                )}
+                {task.cd_project_no && (
+                  <div>
+                    <dt className="text-xs text-muted-foreground">CD Project No.</dt>
+                    <dd className="mt-0.5 font-mono font-bold text-primary">
+                      {task.cd_project_no}
+                    </dd>
+                  </div>
+                )}
+                {task.customer_project_no && (
+                  <div>
+                    <dt className="text-xs text-muted-foreground">Customer Project No.</dt>
+                    <dd className="mt-0.5 font-medium">{task.customer_project_no}</dd>
+                  </div>
+                )}
+                {task.speed && (
+                  <div>
+                    <dt className="text-xs text-muted-foreground">Speed</dt>
+                    <dd className="mt-0.5 font-semibold">
+                      {task.speed === "U" ? "U (Urgent)" : "N (Normal)"}
+                    </dd>
+                  </div>
+                )}
+                {task.category_code && (
+                  <div>
+                    <dt className="text-xs text-muted-foreground">Category</dt>
+                    <dd className="mt-0.5 font-semibold">{task.category_code}</dd>
+                  </div>
+                )}
+                {task.complexity && (
+                  <div>
+                    <dt className="text-xs text-muted-foreground">Complexity</dt>
+                    <dd className="mt-0.5 font-semibold">{task.complexity}</dd>
+                  </div>
+                )}
+                {task.work_type && (
+                  <div>
+                    <dt className="text-xs text-muted-foreground">Work Type</dt>
+                    <dd className="mt-0.5 font-medium">{task.work_type}</dd>
+                  </div>
+                )}
+                {task.request_date && (
+                  <div>
+                    <dt className="text-xs text-muted-foreground">Request Date</dt>
+                    <dd className="mt-0.5 font-medium">
+                      {new Date(task.request_date).toLocaleDateString("en-IN", {
+                        day: "numeric",
+                        month: "short",
+                        year: "numeric",
+                      })}
+                    </dd>
+                  </div>
+                )}
                 <div>
                   <dt className="text-xs text-muted-foreground">Points</dt>
                   <dd className="mt-0.5 font-semibold">{task.points} pts</dd>
@@ -167,10 +258,10 @@ export default async function TaskDetailPage({
                   <dd className="mt-0.5 font-medium">
                     {task.deadline
                       ? new Date(task.deadline).toLocaleDateString("en-IN", {
-                          day: "numeric",
-                          month: "long",
-                          year: "numeric",
-                        })
+                        day: "numeric",
+                        month: "long",
+                        year: "numeric",
+                      })
                       : "—"}
                   </dd>
                 </div>
@@ -189,6 +280,25 @@ export default async function TaskDetailPage({
                   </dd>
                 </div>
               </dl>
+
+              {/* Reference Image display */}
+              {task.reference_image && (
+                <>
+                  <Separator className="my-4" />
+                  <div className="flex flex-col gap-2">
+                    <span className="text-xs font-semibold text-muted-foreground tracking-wide uppercase">
+                      Reference Image
+                    </span>
+                    <div className="relative max-w-sm overflow-hidden rounded-lg border border-border bg-muted/30 p-1">
+                      <img
+                        src={task.reference_image}
+                        alt="Reference"
+                        className="max-h-64 w-full rounded object-contain"
+                      />
+                    </div>
+                  </div>
+                </>
+              )}
               {task.description && (
                 <>
                   <Separator className="my-4" />
@@ -352,11 +462,10 @@ export default async function TaskDetailPage({
                               {cl.checkItems.map((ci) => (
                                 <li key={ci.id} className="flex items-center gap-2 text-xs">
                                   <span
-                                    className={`inline-flex h-3.5 w-3.5 shrink-0 items-center justify-center rounded border ${
-                                      ci.state === "complete"
+                                    className={`inline-flex h-3.5 w-3.5 shrink-0 items-center justify-center rounded border ${ci.state === "complete"
                                         ? "bg-emerald-500 border-emerald-500 text-white"
                                         : "border-muted-foreground/30"
-                                    }`}
+                                      }`}
                                   >
                                     {ci.state === "complete" && (
                                       <svg
@@ -456,6 +565,7 @@ export default async function TaskDetailPage({
                 id: task.id,
                 status: task.status,
                 assigned_to: task.assigned_to,
+                drive_folder_link: task.drive_folder_link,
               }}
               session={{
                 id: session.id,
@@ -464,9 +574,9 @@ export default async function TaskDetailPage({
               pendingSubmission={
                 pendingSubmission
                   ? {
-                      id: pendingSubmission.id,
-                      drive_link: pendingSubmission.drive_link,
-                    }
+                    id: pendingSubmission.id,
+                    drive_link: pendingSubmission.drive_link,
+                  }
                   : null
               }
               designers={designers}
@@ -483,20 +593,30 @@ export default async function TaskDetailPage({
                 </div>
                 <Separator />
                 <div className="divide-y divide-border">
-                  {submissions.map((sub) => (
-                    <div key={sub.id} className="px-5 py-4">
-                      <div className="flex items-center justify-between gap-2">
-                        <div className="flex items-center gap-2">
-                          <span className="font-mono text-xs font-semibold">
-                            {sub.version}
-                          </span>
-                          <Badge
-                            variant="outline"
-                            className={`text-xs ${OUTCOME_BADGE[sub.outcome] ?? ""}`}
-                          >
-                            {OUTCOME_LABEL[sub.outcome] ?? sub.outcome}
-                          </Badge>
-                        </div>
+                  {submissions.map((sub, idx) => {
+                    const isReopened =
+                      sub.outcome === "reopened_for_revision" ||
+                      (sub.outcome === "approved" &&
+                        task.status !== "client_ready" &&
+                        task.status !== "closed" &&
+                        Boolean(task.revision_notes) &&
+                        idx === submissions.findLastIndex((s) => s.outcome === "approved" || s.outcome === "reopened_for_revision"))
+                    const outcomeKey = isReopened ? "reopened_for_revision" : sub.outcome
+
+                    return (
+                      <div key={sub.id} className="px-5 py-4">
+                        <div className="flex items-center justify-between gap-2">
+                          <div className="flex items-center gap-2">
+                            <span className="font-mono text-xs font-semibold">
+                              {sub.version}
+                            </span>
+                            <Badge
+                              variant="outline"
+                              className={`text-xs ${OUTCOME_BADGE[outcomeKey] ?? ""}`}
+                            >
+                              {OUTCOME_LABEL[outcomeKey] ?? outcomeKey}
+                            </Badge>
+                          </div>
                         <p className="text-xs text-muted-foreground">
                           {new Date(sub.submitted_at).toLocaleString("en-IN", {
                             day: "numeric",
@@ -519,6 +639,16 @@ export default async function TaskDetailPage({
                       >
                         Open CAD file →
                       </a>
+                      {sub.designer_notes && (
+                        <div className="mt-2.5 rounded-lg border border-primary/20 bg-primary/8 px-3.5 py-2.5">
+                          <p className="text-xs font-semibold text-primary">
+                            Designer Description / Notes
+                          </p>
+                          <p className="mt-0.5 text-xs text-foreground">
+                            {sub.designer_notes}
+                          </p>
+                        </div>
+                      )}
                       {sub.remarks && (
                         <div className="mt-2.5 rounded-lg border border-destructive/20 bg-destructive/8 px-3.5 py-2.5">
                           <p className="text-xs font-semibold text-destructive">
@@ -530,7 +660,7 @@ export default async function TaskDetailPage({
                         </div>
                       )}
                     </div>
-                  ))}
+                  )})}
                 </div>
               </div>
             )}

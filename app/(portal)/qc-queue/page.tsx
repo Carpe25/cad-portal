@@ -4,7 +4,7 @@ import { getSession } from "@/lib/session"
 import { redirect } from "next/navigation"
 import { sql } from "@/lib/db"
 import { DriveLink } from "./drive-link"
-import { PRIORITY_COLORS } from "@/lib/task-utils"
+import { PRIORITY_COLORS, SPEED_COLORS } from "@/lib/task-utils"
 import { CheckCircle2 } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { Skeleton } from "@/components/ui/skeleton"
@@ -15,6 +15,9 @@ type QueueItem = {
   task_id: string
   readable_id: string
   title: string
+  customer_project_no: string | null
+  cd_project_no: string | null
+  speed: string | null
   client_name: string
   priority: string
   designer_name: string
@@ -54,6 +57,9 @@ async function QCQueueContent() {
       t.id AS task_id,
       t.readable_id,
       t.title,
+      t.customer_project_no,
+      t.cd_project_no,
+      t.speed,
       t.client_name,
       t.priority,
       u.name AS designer_name,
@@ -110,18 +116,18 @@ async function QCQueueContent() {
                     {idx + 1}
                   </span>
                   <p className="font-mono text-xs text-muted-foreground">
-                    {item.readable_id} · {item.version}
+                    {item.cd_project_no || item.readable_id} · {item.version}
                   </p>
                 </div>
                 <p className="mt-1.5 leading-snug font-medium transition-colors group-hover:text-primary">
-                  {item.title}
+                  {item.customer_project_no || item.title}
                 </p>
               </div>
               <Badge
                 variant="outline"
-                className={`shrink-0 capitalize ${PRIORITY_COLORS[item.priority] ?? ""}`}
+                className={`shrink-0 ${SPEED_COLORS[item.speed || "N"] || PRIORITY_COLORS[item.priority] || ""}`}
               >
-                {item.priority}
+                Speed: {item.speed || (item.priority === "high" ? "U" : "N")}
               </Badge>
             </div>
 

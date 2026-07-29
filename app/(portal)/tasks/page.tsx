@@ -20,14 +20,18 @@ import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
 import { sql } from "@/lib/db"
 import { getSession, type SessionUser } from "@/lib/session"
-import { PRIORITY_COLORS, STATUS_COLORS, STATUS_LABELS } from "@/lib/task-utils"
+import { PRIORITY_COLORS, SPEED_COLORS, STATUS_COLORS, STATUS_LABELS } from "@/lib/task-utils"
 
 // --- Types ---
 type Task = {
   id: string
   readable_id: string
   title: string
+  customer_project_no: string | null
+  cd_project_no: string | null
+  speed: string | null
   client_name: string
+  customer_code: string | null
   status: string
   priority: string
   deadline: string | null
@@ -121,7 +125,7 @@ async function TasksWorkspace({
   canManage: boolean
 }) {
   const allTasks = (await sql`
-    SELECT t.id, t.readable_id, t.title, t.client_name, t.status,
+    SELECT t.id, t.readable_id, t.title, t.customer_project_no, t.cd_project_no, t.speed, t.client_name, t.customer_code, t.status,
            t.priority, t.deadline, t.points, t.created_at,
            u.name AS designer_name,
            (t.assigned_to = ${session.id}) AS is_mine,
@@ -272,13 +276,13 @@ async function TasksWorkspace({
         {/* Task sections */}
         <div className="space-y-10">
           {sections.map((sec) => (
-            <TaskSection key={sec.id} {...sec} />
+            <TaskSection key={sec.id} {...sec} canManage={canManage} />
           ))}
         </div>
 
         {/* Sidebar */}
         <aside className="space-y-4">
-          {recommendedTask && <FocusCard task={recommendedTask} />}
+          {recommendedTask && <FocusCard task={recommendedTask} canManage={canManage} />}
           <WorkflowCard tasks={allTasks} />
         </aside>
       </div>
@@ -351,6 +355,7 @@ function TaskSection({
   tasks,
   showDesigner,
   useAutoPriority,
+  canManage,
 }: {
   id: string
   title: string
@@ -358,6 +363,7 @@ function TaskSection({
   tasks: Task[]
   showDesigner: boolean
   useAutoPriority: boolean
+  canManage: boolean
 }) {
   return (
     <section id={id} className="scroll-mt-20 space-y-3">
@@ -392,8 +398,8 @@ function TaskSection({
           <div className="hidden grid-cols-[16px_minmax(0,1fr)_140px_100px_80px_80px] items-center gap-4 border-b border-border bg-muted/30 px-4 py-2.5 text-xs font-medium text-muted-foreground lg:grid">
             <span />
             <span>Task</span>
-            {showDesigner ? <span>Designer</span> : <span>Client</span>}
-            <span>Priority</span>
+            {showDesigner ? <span>Designer</span> : <span>{canManage ? "Client" : "Customer Code"}</span>}
+            <span>Speed</span>
             <span>Status</span>
             <span className="text-right">Age</span>
           </div>
@@ -411,6 +417,7 @@ function TaskSection({
                   priority={priority}
                   showDesigner={showDesigner}
                   isLast={isLast}
+                  canManage={canManage}
                 />
               )
             })}
@@ -426,12 +433,18 @@ function TaskRow({
   task,
   priority,
   showDesigner,
+  canManage,
 }: {
   task: Task
   priority: string
   showDesigner: boolean
   isLast: boolean
+  canManage: boolean
 }) {
+  const customerDisplay = canManage
+    ? task.client_name
+    : (task.customer_code ? `Code: ${task.customer_code}` : "—")
+
   return (
     <Link
       href={`/tasks/${task.id}`}
@@ -448,15 +461,15 @@ function TaskRow({
       {/* Title + meta */}
       <div className="min-w-0 flex-1">
         <p className="truncate text-sm font-medium text-foreground group-hover:text-primary">
-          {task.title}
+          {task.customer_project_no || task.title}
         </p>
         <div className="mt-0.5 flex items-center gap-1.5 text-xs text-muted-foreground">
-          <span className="font-mono">{task.readable_id}</span>
+          <span className="font-mono">{task.cd_project_no || task.readable_id}</span>
           <span>·</span>
           <span className="truncate">
             {showDesigner
               ? (task.designer_name ?? "Unassigned")
-              : task.client_name}
+              : customerDisplay}
           </span>
           {task.deadline && (
             <>
@@ -469,9 +482,9 @@ function TaskRow({
           <span className="ml-auto flex items-center gap-1.5 lg:hidden">
             <Badge
               variant="outline"
-              className={`text-[10px] ${PRIORITY_COLORS[priority]}`}
+              className={`text-[10px] ${SPEED_COLORS[task.speed || "N"] || PRIORITY_COLORS[priority]}`}
             >
-              {priority}
+              Speed: {task.speed || (priority === "high" ? "U" : "N")}
             </Badge>
             <span className="text-[10px] text-muted-foreground">
               {formatAge(task.created_at)}
@@ -482,16 +495,16 @@ function TaskRow({
 
       {/* Desktop: designer or client label (second column) */}
       <span className="hidden truncate text-sm text-muted-foreground lg:block">
-        {showDesigner ? (task.designer_name ?? "—") : task.client_name}
+        {showDesigner ? (task.designer_name ?? "—") : customerDisplay}
       </span>
 
-      {/* Priority badge */}
+      {/* Speed badge */}
       <div className="hidden lg:block">
         <Badge
           variant="outline"
-          className={`text-xs ${PRIORITY_COLORS[priority]}`}
+          className={`text-xs ${SPEED_COLORS[task.speed || "N"] || PRIORITY_COLORS[priority]}`}
         >
-          {priority}
+          Speed: {task.speed || (priority === "high" ? "U" : "N")}
         </Badge>
       </div>
 
@@ -514,7 +527,11 @@ function TaskRow({
 }
 
 // --- Focus Card ---
-function FocusCard({ task }: { task: Task }) {
+function FocusCard({ task, canManage }: { task: Task; canManage: boolean }) {
+  const customerDisplay = canManage
+    ? task.client_name
+    : (task.customer_code ? `Code: ${task.customer_code}` : "—")
+
   return (
     <div className="rounded-xl border border-primary/20 bg-primary/5 p-4">
       <div className="flex items-center gap-2">
@@ -525,11 +542,11 @@ function FocusCard({ task }: { task: Task }) {
       </div>
       <div className="mt-3 space-y-1">
         <p className="text-sm leading-snug font-medium text-foreground">
-          {task.title}
+          {task.customer_project_no || task.title}
         </p>
         <p className="text-xs text-muted-foreground">
-          <span className="font-mono">{task.readable_id}</span> ·{" "}
-          {task.client_name}
+          <span className="font-mono">{task.cd_project_no || task.readable_id}</span> ·{" "}
+          {customerDisplay}
         </p>
       </div>
       <div className="mt-4 flex items-center gap-2">

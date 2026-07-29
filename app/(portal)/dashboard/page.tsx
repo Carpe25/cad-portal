@@ -6,7 +6,7 @@ import { sql } from "@/lib/db"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Skeleton } from "@/components/ui/skeleton"
-import { STATUS_LABELS, STATUS_COLORS, PRIORITY_COLORS } from "@/lib/task-utils"
+import { STATUS_LABELS, STATUS_COLORS, PRIORITY_COLORS, SPEED_COLORS } from "@/lib/task-utils"
 import {
   ArrowRight,
   Clock,
@@ -27,6 +27,9 @@ type Task = {
   id: string
   readable_id: string
   title: string
+  customer_project_no: string | null
+  cd_project_no: string | null
+  speed: string | null
   status: string
   priority: string
   deadline: string | null
@@ -119,7 +122,7 @@ async function ManagerContent() {
   ]
 
   const recentTasks = (await sql`
-    SELECT t.id, t.readable_id, t.title, t.status, t.priority, t.deadline,
+    SELECT t.id, t.readable_id, t.title, t.customer_project_no, t.cd_project_no, t.speed, t.status, t.priority, t.deadline,
            u.name AS designer_name
     FROM tasks t
     LEFT JOIN users u ON t.assigned_to = u.id
@@ -175,7 +178,7 @@ async function QCContent({
   ]
 
   const myTasks = (await sql`
-    SELECT id, readable_id, title, status, priority, deadline
+    SELECT id, readable_id, title, customer_project_no, cd_project_no, speed, status, priority, deadline
     FROM tasks
     WHERE assigned_to = ${session.id} AND status IN ('assigned', 'in_progress', 'revision_requested')
     ORDER BY
@@ -231,7 +234,7 @@ async function DesignerContent({
   ]
 
   const myTasks = (await sql`
-    SELECT id, readable_id, title, status, priority, deadline
+    SELECT id, readable_id, title, customer_project_no, cd_project_no, speed, status, priority, deadline
     FROM tasks
     WHERE assigned_to = ${session.id} AND status IN ('assigned', 'in_progress', 'revision_requested')
     ORDER BY
@@ -322,7 +325,7 @@ function DashboardContent({
               <span />
               <span>Task</span>
               {showDesigner && <span>Designer</span>}
-              <span>Priority</span>
+              <span>Speed</span>
               <span>Status</span>
               <span className="text-right">Deadline</span>
             </div>
@@ -349,10 +352,10 @@ function DashboardContent({
                   {/* Title + meta */}
                   <div className="min-w-0 flex-1">
                     <p className="truncate text-sm font-medium text-foreground group-hover:text-primary">
-                      {task.title}
+                      {task.customer_project_no || task.title}
                     </p>
                     <div className="mt-0.5 flex items-center gap-1.5 text-xs text-muted-foreground">
-                      <span className="font-mono">{task.readable_id}</span>
+                      <span className="font-mono">{task.cd_project_no || task.readable_id}</span>
                       {task.deadline && (
                         <>
                           <span>·</span>
@@ -364,9 +367,9 @@ function DashboardContent({
                       <span className="ml-auto flex items-center gap-1.5 lg:hidden">
                         <Badge
                           variant="outline"
-                          className={`text-[10px] ${PRIORITY_COLORS[task.priority] ?? ""}`}
+                          className={`text-[10px] ${SPEED_COLORS[task.speed || "N"] || PRIORITY_COLORS[task.priority] || ""}`}
                         >
-                          {task.priority}
+                          Speed: {task.speed || (task.priority === "high" ? "U" : "N")}
                         </Badge>
                       </span>
                     </div>
@@ -379,13 +382,13 @@ function DashboardContent({
                     </span>
                   )}
 
-                  {/* Priority badge */}
+                  {/* Speed badge */}
                   <div className="hidden lg:block">
                     <Badge
                       variant="outline"
-                      className={`text-xs ${PRIORITY_COLORS[task.priority] ?? ""}`}
+                      className={`text-xs ${SPEED_COLORS[task.speed || "N"] || PRIORITY_COLORS[task.priority] || ""}`}
                     >
-                      {task.priority}
+                      Speed: {task.speed || (task.priority === "high" ? "U" : "N")}
                     </Badge>
                   </div>
 

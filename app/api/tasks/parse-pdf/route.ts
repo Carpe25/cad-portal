@@ -13,7 +13,16 @@ export async function POST(request: NextRequest) {
     }
 
     // 2. Parse form data
-    const formData = await request.formData()
+    let formData: FormData
+    try {
+      formData = await request.formData()
+    } catch (err: any) {
+      console.error("Error parsing FormData in parse-pdf route:", err)
+      return NextResponse.json(
+        { error: `Failed to parse PDF upload body: ${err.message || err}` },
+        { status: 400 }
+      )
+    }
     const file = formData.get("file") as File | null
     if (!file) {
       return NextResponse.json({ error: "No PDF file uploaded" }, { status: 400 })
