@@ -248,3 +248,205 @@ export async function uploadFilesToDriveFolder(
     )
   }
 }
+
+export async function createResumableUploadSession(options: {
+  rootFolderId: string
+  relativePath?: string
+  fileName: string
+  mimeType: string
+  fileSize: number
+}): Promise<{ uploadUrl: string; fileName: string }> {
+  try {
+    const drive = getDriveClient()
+    const targetEmail = process.env.GOOGLE_DRIVE_TARGET_EMAIL
+    const folderCache = new Map<string, string>()
+
+    async function getOrCreateSubfolder(parentId: string, folderName: string): Promise<string> {
+      const cacheKey = `${parentId}:${folderName}`
+      if (folderCache.has(cacheKey)) {
+        return folderCache.get(cacheKey)!
+      }
+
+      const safeFolderName = folderName.replace(/\\/g, "\\\\").replace(/'/g, "\\'")
+      const query = `'${parentId}' in parents and name = '${safeFolderName}' and mimeType = 'application/vnd.google-apps.folder' and trashed = false`
+
+      try {
+        const listRes = await drive.files.list({
+          q: query,
+          supportsAllDrives: true,
+          includeItemsFromAllDrives: true,
+          fields: "files(id, name)",
+        })
+
+        if (listRes.data.files && listRes.data.files.length > 0) {
+          const existingId = listRes.data.files[0].id!
+          folderCache.set(cacheKey, existingId)
+          return existingId
+        }
+      } catch (err) {
+        console.error(`Error searching folder "${folderName}" in Drive:`, err)
+      }
+
+      const fileMetadata: Record<string, unknown> = {
+        name: folderName,
+        mimeType: "application/vnd.google-apps.folder",
+        parents: [parentId],
+      }
+
+      const response = await drive.files.create({
+        requestBody: fileMetadata,
+        supportsAllDrives: true,
+        fields: "id",
+      })
+
+      const newFolderId = response.data.id
+      if (!newFolderId) {
+        throw new Error(`Failed to create Google Drive subfolder: ${folderName}`)
+      }
+
+      if (targetEmail) {
+        try {
+          await drive.permissions.create({
+            fileId: newFolderId,
+            supportsAllDrives: true,
+            requestBody: {
+              role: "writer",
+              type: "user",
+              emailAddress: targetEmail,
+            },
+          })
+        } catch (permError) {
+          console.error("Error sharing subfolder permission with target email:", permError)
+        }
+      }
+
+      folderCache.set(cacheKey, newFolderId)
+      return newFolderId
+    }
+
+    const fullPath = options.relativePath || options.fileName
+    const normalizedPath = fullPath.replace(/\\/g, "/")
+    const parts = normalizedPath.split("/").filter(Boolean)
+
+    let targetFolderId = options.rootFolderId
+    let finalFileName = options.fileName
+
+    if (parts.length > 1) {
+      finalFileName = parts[parts.length - 1]
+      const folderParts = parts.slice(0, -1)
+      for (const folderName of folderParts) {
+        targetFolderId = await getOrCreateSubfolder(targetFolderId, folderName)
+      }
+    } else if (parts.length === 1) {
+      finalFileName = parts[0]
+    }
+
+    const clientEmail = process.env.GOOGLE_CLIENT_EMAIL
+    const rawPrivateKey = process.env.GOOGLE_PRIVATE_KEY
+    if (!clientEmail || !rawPrivateKey) {
+      throw new Error("Google Drive credentials missing.")
+    }
+
+    const auth = new google.auth.JWT({
+      email: clientEmail,
+      key: formatPrivateKey(rawPrivateKey),
+      scopes: ["https://www.googleapis.com/auth/drive"],
+      subject: process.env.GOOGLE_DRIVE_DELEGATE_EMAIL || undefined,
+    })
+
+    const tokenRes = await auth.getAccessToken()
+    const accessToken = tokenRes.token
+    if (!accessToken) {
+      throw new Error("Failed to acquire Google Drive OAuth access token.")
+    }
+
+    const metadata = {
+      name: finalFileName,
+      parents: [targetFolderId],
+    }
+
+    const initRes = await fetch(
+      "https://www.googleapis.com/upload/drive/v3/files?uploadType=resumable&supportsAllDrives=true",
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          "Content-Type": "application/json; charset=UTF-8",
+          "X-Upload-Content-Type": options.mimeType || "application/octet-stream",
+          "X-Upload-Content-Length": String(options.fileSize),
+        },
+        body: JSON.stringify(metadata),
+      }
+    )
+
+    if (!initRes.ok) {
+      const errText = await initRes.text()
+      throw new Error(`Failed to initiate Google Drive upload session: ${errText}`)
+    }
+
+    const uploadUrl = initRes.headers.get("location")
+    if (!uploadUrl) {
+      throw new Error("Google Drive did not return a resumable session location URL.")
+    }
+
+    return { uploadUrl, fileName: finalFileName }
+  } catch (error: any) {
+    console.error("Error in createResumableUploadSession:", error)
+    throw new Error(error.message || "Failed to create resumable upload session.")
+  }
+}
+
+export async function uploadChunkToDriveSession(options: {
+  uploadUrl: string
+  chunkBuffer: Buffer
+  rangeStart: number
+  rangeEnd: number
+  totalSize: number
+}): Promise<{ status: "incomplete" | "complete"; fileId?: string }> {
+  try {
+    const targetEmail = process.env.GOOGLE_DRIVE_TARGET_EMAIL
+    const { uploadUrl, chunkBuffer, rangeStart, rangeEnd, totalSize } = options
+
+    const res = await fetch(uploadUrl, {
+      method: "PUT",
+      headers: {
+        "Content-Length": String(chunkBuffer.length),
+        "Content-Range": `bytes ${rangeStart}-${rangeEnd}/${totalSize}`,
+      },
+      body: new Uint8Array(chunkBuffer),
+    })
+
+    if (res.status === 308) {
+      return { status: "incomplete" }
+    }
+
+    if (res.ok) {
+      const data = await res.json()
+      const fileId = data.id
+      if (fileId && targetEmail) {
+        try {
+          const drive = getDriveClient()
+          await drive.permissions.create({
+            fileId,
+            supportsAllDrives: true,
+            requestBody: {
+              role: "writer",
+              type: "user",
+              emailAddress: targetEmail,
+            },
+          })
+        } catch {
+          // Sharing file permission optional
+        }
+      }
+      return { status: "complete", fileId }
+    }
+
+    const errText = await res.text()
+    throw new Error(`Google Drive chunk upload failed (${res.status}): ${errText}`)
+  } catch (error: any) {
+    console.error("Error in uploadChunkToDriveSession:", error)
+    throw new Error(error.message || "Failed to upload chunk to Google Drive.")
+  }
+}
+

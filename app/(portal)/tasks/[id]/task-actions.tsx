@@ -97,33 +97,78 @@ export function TaskActions({
     startTransition(async () => {
       try {
         if (validFiles.length > 0) {
+          const CHUNK_SIZE = 2 * 1024 * 1024 // 2 MB chunks (compliant with Google Drive's 256 KB multiple)
+
           for (let i = 0; i < validFiles.length; i++) {
             const file = validFiles[i]
             const relPath = file.webkitRelativePath || file.name
+
             setUploadStatus(
-              `Uploading file ${i + 1} of ${validFiles.length}: ${relPath}...`
+              `Initiating upload session for file ${i + 1} of ${validFiles.length}: ${file.name}...`
             )
 
-            const res = await fetch(`/api/tasks/${task.id}/upload`, {
+            // 1. Initiate Resumable Upload Session
+            const initRes = await fetch(`/api/tasks/${task.id}/upload`, {
               method: "POST",
               headers: {
-                "Content-Type": "application/octet-stream",
-                "x-file-name": encodeURIComponent(file.name),
-                "x-relative-path": encodeURIComponent(relPath),
-                "x-file-type": encodeURIComponent(file.type || "application/octet-stream"),
-                "x-drive-link": encodeURIComponent(driveLink || ""),
-                "x-is-last": i === validFiles.length - 1 ? "true" : "false",
+                "Content-Type": "application/json",
+                "x-action": "init-session",
               },
-              body: file,
+              body: JSON.stringify({
+                fileName: file.name,
+                relativePath: relPath,
+                mimeType: file.type || "application/octet-stream",
+                fileSize: file.size,
+              }),
             })
 
-            const data = await res.json()
-            if (!res.ok || data.error) {
-              setError(data.error || `Failed to upload file: ${file.name}`)
+            const initData = await initRes.json()
+            if (!initRes.ok || initData.error || !initData.uploadUrl) {
+              setError(initData.error || `Failed to initiate upload session for: ${file.name}`)
               setUploadStatus(null)
               return
             }
+
+            const uploadUrl = initData.uploadUrl
+            const totalChunks = Math.ceil(file.size / CHUNK_SIZE) || 1
+
+            // 2. Upload File in 2MB Chunks
+            for (let c = 0; c < totalChunks; c++) {
+              const start = c * CHUNK_SIZE
+              const end = Math.min(start + CHUNK_SIZE, file.size)
+              const chunkBlob = file.slice(start, end)
+              const rangeEnd = Math.max(0, end - 1)
+              const isLastChunkOfLastFile =
+                i === validFiles.length - 1 && c === totalChunks - 1
+
+              const percent = Math.round((end / (file.size || 1)) * 100)
+              setUploadStatus(
+                `Uploading file ${i + 1}/${validFiles.length}: ${file.name} (${percent}%)...`
+              )
+
+              const chunkRes = await fetch(`/api/tasks/${task.id}/upload`, {
+                method: "POST",
+                headers: {
+                  "Content-Type": "application/octet-stream",
+                  "x-action": "upload-chunk",
+                  "x-upload-url": encodeURIComponent(uploadUrl),
+                  "x-range-start": String(start),
+                  "x-range-end": String(rangeEnd),
+                  "x-total-size": String(file.size),
+                  "x-is-last": isLastChunkOfLastFile ? "true" : "false",
+                },
+                body: chunkBlob,
+              })
+
+              const chunkData = await chunkRes.json()
+              if (!chunkRes.ok || chunkData.error) {
+                setError(chunkData.error || `Failed to upload chunk for file: ${file.name}`)
+                setUploadStatus(null)
+                return
+              }
+            }
           }
+
           setUploadStatus("Upload complete!")
           router.refresh()
         } else {
