@@ -33,11 +33,11 @@ export async function assignToMeAction(taskId: string) {
   revalidatePath("/tasks")
 }
 
-export async function submitForQCAction(taskId: string, driveLink: string, designerNotes?: string) {
+export async function submitForQCAction(taskId: string, driveLink?: string, designerNotes?: string) {
   const session = await getSession()
   if (!session) return { error: "Unauthorized" }
 
-  if (!driveLink.trim()) return { error: "Drive link is required" }
+  const link = driveLink ? driveLink.trim() : ""
 
   // Ensure column exists
   await sql`ALTER TABLE submissions ADD COLUMN IF NOT EXISTS designer_notes TEXT`
@@ -51,7 +51,7 @@ export async function submitForQCAction(taskId: string, driveLink: string, desig
 
   await sql`
     INSERT INTO submissions (task_id, version, drive_link, submitted_by, outcome, designer_notes)
-    VALUES (${taskId}, ${version}, ${driveLink.trim()}, ${session.id}, 'pending', ${designerNotes ? designerNotes.trim() : null})
+    VALUES (${taskId}, ${version}, ${link}, ${session.id}, 'pending', ${designerNotes ? designerNotes.trim() : null})
   `
 
   await sql`
@@ -76,6 +76,7 @@ export async function submitForQCWithFilesAction(formData: FormData) {
 
   const taskDriveFolderLink = taskRows[0].drive_folder_link as string | null
   const files = formData.getAll("files") as File[]
+  const relativePaths = formData.getAll("relativePaths") as string[]
 
   if (taskDriveFolderLink) {
     const { extractDriveFolderId, uploadFilesToDriveFolder } = await import("@/lib/drive")
@@ -84,10 +85,11 @@ export async function submitForQCWithFilesAction(formData: FormData) {
     if (folderId && files.length > 0 && files[0] && files[0].size > 0) {
       try {
         const fileBuffers = await Promise.all(
-          files.map(async (file) => {
+          files.map(async (file, index) => {
             const arrayBuffer = await file.arrayBuffer()
             return {
               name: file.name,
+              relativePath: relativePaths[index] || file.name,
               mimeType: file.type || "application/octet-stream",
               buffer: Buffer.from(arrayBuffer),
             }

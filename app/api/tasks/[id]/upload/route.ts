@@ -20,12 +20,13 @@ export async function POST(
 
     const contentType = request.headers.get("content-type") || ""
 
-    let validFiles: Array<{ name: string; mimeType: string; buffer: Buffer }> = []
+    let validFiles: Array<{ name: string; relativePath?: string; mimeType: string; buffer: Buffer }> = []
     let isLast = true
     let driveLink = ""
 
     if (contentType.includes("application/octet-stream")) {
       const rawFileName = request.headers.get("x-file-name")
+      const rawRelativePath = request.headers.get("x-relative-path") || request.headers.get("x-file-path")
       const rawFileType = request.headers.get("x-file-type")
       const rawDriveLink = request.headers.get("x-drive-link")
       isLast = request.headers.get("x-is-last") === "true"
@@ -36,6 +37,15 @@ export async function POST(
           fileName = decodeURIComponent(rawFileName)
         } catch {
           fileName = rawFileName
+        }
+      }
+
+      let relativePath = fileName
+      if (rawRelativePath) {
+        try {
+          relativePath = decodeURIComponent(rawRelativePath)
+        } catch {
+          relativePath = rawRelativePath
         }
       }
 
@@ -62,18 +72,20 @@ export async function POST(
       if (buffer.length > 0) {
         validFiles.push({
           name: fileName,
+          relativePath: relativePath || fileName,
           mimeType,
           buffer,
         })
       }
     } else if (contentType.includes("application/json")) {
       const body = await request.json()
-      const { fileBase64, originalFilename, mimeType, isLast: isLastParam, driveLink: driveLinkParam } = body
+      const { fileBase64, originalFilename, relativePath, mimeType, isLast: isLastParam, driveLink: driveLinkParam } = body
 
       if (fileBase64 && originalFilename) {
         const buffer = Buffer.from(fileBase64, "base64")
         validFiles.push({
           name: originalFilename,
+          relativePath: relativePath || originalFilename,
           mimeType: mimeType || "application/octet-stream",
           buffer,
         })
@@ -93,6 +105,7 @@ export async function POST(
       }
 
       const rawFiles = formData.getAll("files") as File[]
+      const rawRelativePaths = formData.getAll("relativePaths") as string[]
       const rawOriginalFilename = formData.get("originalFilename") as string | null
       let originalFilename: string | null = null
       if (rawOriginalFilename) {
@@ -103,11 +116,14 @@ export async function POST(
         }
       }
 
-      for (const file of rawFiles) {
+      for (let i = 0; i < rawFiles.length; i++) {
+        const file = rawFiles[i]
         if (file && file.size > 0 && !file.name.startsWith(".")) {
           const arrayBuffer = await file.arrayBuffer()
+          const relPath = rawRelativePaths[i] || file.name
           validFiles.push({
             name: originalFilename || file.name,
+            relativePath: relPath,
             mimeType: file.type || "application/octet-stream",
             buffer: Buffer.from(arrayBuffer),
           })

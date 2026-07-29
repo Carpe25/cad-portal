@@ -281,24 +281,49 @@ export default async function TaskDetailPage({
                 </div>
               </dl>
 
-              {/* Reference Image display */}
-              {task.reference_image && (
-                <>
-                  <Separator className="my-4" />
-                  <div className="flex flex-col gap-2">
-                    <span className="text-xs font-semibold text-muted-foreground tracking-wide uppercase">
-                      Reference Image
-                    </span>
-                    <div className="relative max-w-sm overflow-hidden rounded-lg border border-border bg-muted/30 p-1">
-                      <img
-                        src={task.reference_image}
-                        alt="Reference"
-                        className="max-h-64 w-full rounded object-contain"
-                      />
+              {/* Reference Image display (Single or Multiple) */}
+              {(() => {
+                if (!task.reference_image) return null
+                let images: string[] = []
+                try {
+                  if (task.reference_image.trim().startsWith("[")) {
+                    images = JSON.parse(task.reference_image)
+                  } else {
+                    images = [task.reference_image]
+                  }
+                } catch {
+                  images = [task.reference_image]
+                }
+                if (images.length === 0) return null
+
+                return (
+                  <>
+                    <Separator className="my-4" />
+                    <div className="flex flex-col gap-2">
+                      <span className="text-xs font-semibold text-muted-foreground tracking-wide uppercase">
+                        Reference Image{images.length > 1 ? `s (${images.length})` : ""}
+                      </span>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                        {images.map((imgUrl, idx) => (
+                          <a
+                            key={idx}
+                            href={imgUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="group relative overflow-hidden rounded-lg border border-border bg-muted/30 p-1 hover:border-primary/50 transition-colors"
+                          >
+                            <img
+                              src={imgUrl}
+                              alt={`Reference ${idx + 1}`}
+                              className="max-h-64 w-full rounded object-contain transition-transform duration-200 group-hover:scale-105"
+                            />
+                          </a>
+                        ))}
+                      </div>
                     </div>
-                  </div>
-                </>
-              )}
+                  </>
+                )
+              })()}
               {task.description && (
                 <>
                   <Separator className="my-4" />

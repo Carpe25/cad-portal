@@ -83,7 +83,6 @@ export function CreateTaskForm({
   }
 
   // Standard task fields
-  const [title, setTitle] = useState("")
   const [description, setDescription] = useState("")
   const [deadline, setDeadline] = useState("")
   const [points, setPoints] = useState("")
@@ -91,8 +90,9 @@ export function CreateTaskForm({
   const [priority, setPriority] = useState("medium")
   const [assignedTo, setAssignedTo] = useState("")
 
-  // Reference image preview state
-  const [imagePreview, setImagePreview] = useState<string | null>(null)
+  // Reference image files and previews state
+  const [selectedImageFiles, setSelectedImageFiles] = useState<File[]>([])
+  const [imagePreviews, setImagePreviews] = useState<string[]>([])
 
   // Auto-generate Sr. No. (4 digits e.g. 0001)
   const srNoFormatted = String(nextSrNoCount).padStart(4, "0")
@@ -146,51 +146,52 @@ export function CreateTaskForm({
     }
   }
 
-  // Handle reference image selection
+  // Handle reference images selection (multiple)
   const handleImageChange = (e: ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0]
-    if (file) {
-      const reader = new FileReader()
-      reader.onloadend = () => {
-        setImagePreview(reader.result as string)
-      }
-      reader.readAsDataURL(file)
-    } else {
-      setImagePreview(null)
-    }
+    const files = Array.from(e.target.files || [])
+    if (files.length === 0) return
+
+    const newPreviews = files.map((file) => URL.createObjectURL(file))
+    setSelectedImageFiles((prev) => [...prev, ...files])
+    setImagePreviews((prev) => [...prev, ...newPreviews])
+    e.target.value = ""
   }
 
-  // Submit handler
+  const removeImagePreview = (index: number) => {
+    setSelectedImageFiles((prev) => prev.filter((_, i) => i !== index))
+    setImagePreviews((prev) => prev.filter((_, i) => i !== index))
+  }
+
+  // Submit handler using FormData to avoid large base64 React Server Action serialization issues
   function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault()
     setError(null)
-    const refInput = e.currentTarget.querySelector<HTMLInputElement>('input[name="reference_image"]')
-    const refFile = refInput?.files?.[0]
 
     startTransition(async () => {
-      const payload = {
-        customer_project_no: customerProjectNo,
-        speed: speed,
-        customer_code: selectedCustomerCode,
-        client_name: clientName,
-        category_code: categoryCode,
-        complexity: complexity,
-        work_type: workType,
-        version: versionInput,
-        sr_no: srNoFormatted,
-        cd_project_no: cdProjectNo,
-        request_date: requestDate,
-        assigned_to: assignedTo,
-        priority: priority,
-        title: title || cdProjectNo,
-        description: description,
-        points: points,
-        deadline: deadline,
-        drive_folder_link: driveLink,
-        referenceImageBase64: imagePreview,
-        referenceImageName: refFile?.name || null,
-      }
-      const result = await createTaskAction(payload)
+      const formData = new FormData()
+      formData.append("customer_project_no", customerProjectNo)
+      formData.append("speed", speed)
+      formData.append("customer_code", selectedCustomerCode)
+      formData.append("client_name", clientName)
+      formData.append("category_code", categoryCode)
+      formData.append("complexity", complexity)
+      formData.append("work_type", workType)
+      formData.append("version", versionInput)
+      formData.append("sr_no", srNoFormatted)
+      formData.append("cd_project_no", cdProjectNo)
+      formData.append("request_date", requestDate)
+      formData.append("assigned_to", assignedTo)
+      formData.append("priority", priority)
+      formData.append("description", description)
+      formData.append("points", points)
+      formData.append("deadline", deadline)
+      formData.append("drive_folder_link", driveLink)
+
+      selectedImageFiles.forEach((file) => {
+        formData.append("reference_image", file)
+      })
+
+      const result = await createTaskAction(formData)
       if (result?.error) setError(result.error)
     })
   }
@@ -413,63 +414,48 @@ export function CreateTaskForm({
 
           {/* Reference Image Upload Field */}
           <div className="flex flex-col gap-2">
-            <Label htmlFor="reference_image">Reference Image</Label>
-            <div className="flex flex-col sm:flex-row items-start gap-4">
+            <Label htmlFor="reference_image">Reference Images</Label>
+            <div className="flex flex-wrap items-start gap-4">
               <label
                 htmlFor="reference_image"
-                className="flex cursor-pointer flex-col items-center justify-center rounded-lg border-2 border-dashed border-muted-foreground/25 p-4 text-center hover:border-primary/50 hover:bg-muted/30 transition-colors w-full sm:w-auto min-w-[200px]"
+                className="flex cursor-pointer flex-col items-center justify-center rounded-lg border-2 border-dashed border-muted-foreground/25 p-4 text-center hover:border-primary/50 hover:bg-muted/30 transition-colors w-full sm:w-auto min-w-[200px] min-h-[96px]"
               >
                 <ImageIcon className="h-6 w-6 text-muted-foreground mb-1" />
                 <span className="text-xs font-medium text-foreground">
-                  Upload Reference Image
+                  Upload Reference Images
                 </span>
                 <span className="text-[10px] text-muted-foreground">
-                  PNG, JPG, WEBP up to 10MB
+                  PNG, JPG, WEBP up to 10MB (Multiple allowed)
                 </span>
                 <input
                   id="reference_image"
                   name="reference_image"
                   type="file"
                   accept="image/*"
+                  multiple
                   onChange={handleImageChange}
                   className="hidden"
                   disabled={isPending}
                 />
               </label>
 
-              {imagePreview && (
-                <div className="relative h-24 w-24 overflow-hidden rounded-lg border border-border bg-muted">
+              {imagePreviews.map((preview, index) => (
+                <div key={index} className="relative h-24 w-24 overflow-hidden rounded-lg border border-border bg-muted shrink-0">
                   <img
-                    src={imagePreview}
-                    alt="Reference preview"
+                    src={preview}
+                    alt={`Reference preview ${index + 1}`}
                     className="h-full w-full object-cover"
                   />
                   <button
                     type="button"
-                    onClick={() => setImagePreview(null)}
-                    className="absolute top-1 right-1 rounded-full bg-background/80 p-1 text-foreground hover:bg-background"
+                    onClick={() => removeImagePreview(index)}
+                    className="absolute top-1 right-1 rounded-full bg-background/80 p-1 text-foreground hover:bg-background shadow-xs"
                   >
                     <X className="h-3 w-3" />
                   </button>
                 </div>
-              )}
+              ))}
             </div>
-          </div>
-
-          {/* Standard task details */}
-          <div className="flex flex-col gap-1.5">
-            <Label htmlFor="title">Task Title / Name</Label>
-            <Input
-              id="title"
-              name="title"
-              placeholder={`Default: ${customerProjectNo || "Customer Project Name/No."}`}
-              disabled={isPending}
-              value={title}
-              onChange={(e) => setTitle(e.target.value)}
-            />
-            <p className="text-xs text-muted-foreground">
-              Leave blank to default to Customer Project No.
-            </p>
           </div>
 
           <div className="flex flex-col gap-1.5">

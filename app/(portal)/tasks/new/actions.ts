@@ -6,6 +6,9 @@ import { getSession } from "@/lib/session"
 import fs from "fs"
 import path from "path"
 
+import { compressImage } from "@/lib/image-compress"
+import { uploadToReferenceStorage } from "@/lib/linode-storage"
+
 export async function ensureTaskTableColumns() {
   await sql`
     ALTER TABLE tasks
@@ -43,6 +46,7 @@ export type CreateTaskPayload = {
   drive_folder_link?: string | null
   assigned_to?: string | null
   priority?: string | null
+  referenceImageBase64s?: string[] | null
   referenceImageBase64?: string | null
   referenceImageName?: string | null
 }
@@ -78,6 +82,7 @@ export async function createTaskAction(data: CreateTaskPayload | FormData) {
   let assignedTo: string | null = null
   let priority = "medium"
   let referenceImageUrl: string | null = null
+  const referenceUrls: string[] = []
 
   if (data instanceof FormData) {
     customerProjectNo = (data.get("customer_project_no") as string) || null
@@ -101,21 +106,21 @@ export async function createTaskAction(data: CreateTaskPayload | FormData) {
     assignedTo = (data.get("assigned_to") as string) || null
     priority = speed === "U" ? "high" : "medium"
 
-    const imageFile = data.get("reference_image") as File | null
-    if (imageFile && imageFile.size > 0) {
-      try {
-        const bytes = await imageFile.arrayBuffer()
-        const buffer = Buffer.from(bytes)
-        const uploadDir = path.join(process.cwd(), "public", "uploads", "reference-images")
-        if (!fs.existsSync(uploadDir)) {
-          fs.mkdirSync(uploadDir, { recursive: true })
+    const imageFiles = data.getAll("reference_image") as File[]
+    for (let i = 0; i < imageFiles.length; i++) {
+      const imageFile = imageFiles[i]
+      if (imageFile && imageFile.size > 0) {
+        try {
+          const bytes = await imageFile.arrayBuffer()
+          const inputBuffer = Buffer.from(bytes)
+          const { compressedBuffer, ext } = await compressImage(inputBuffer, imageFile.name)
+
+          const safeFilename = `${Date.now()}_${i}_img${ext}`
+          const storedUrl = await uploadToReferenceStorage(compressedBuffer, safeFilename, ext)
+          referenceUrls.push(storedUrl)
+        } catch (uploadErr) {
+          console.error("Error saving reference image file:", uploadErr)
         }
-        const safeFilename = `${Date.now()}_img${path.extname(imageFile.name) || ".png"}`
-        const filePath = path.join(uploadDir, safeFilename)
-        fs.writeFileSync(filePath, buffer)
-        referenceImageUrl = `/uploads/reference-images/${safeFilename}`
-      } catch (uploadErr) {
-        console.error("Error saving reference image file:", uploadErr)
       }
     }
   } else {
@@ -139,23 +144,27 @@ export async function createTaskAction(data: CreateTaskPayload | FormData) {
     assignedTo = data.assigned_to || null
     priority = speed === "U" ? "high" : "medium"
 
-    if (data.referenceImageBase64) {
-      try {
-        const base64Data = data.referenceImageBase64.replace(/^data:image\/\w+;base64,/, "")
-        const buffer = Buffer.from(base64Data, "base64")
-        const uploadDir = path.join(process.cwd(), "public", "uploads", "reference-images")
-        if (!fs.existsSync(uploadDir)) {
-          fs.mkdirSync(uploadDir, { recursive: true })
+    const base64List = data.referenceImageBase64s || (data.referenceImageBase64 ? [data.referenceImageBase64] : [])
+    for (let i = 0; i < base64List.length; i++) {
+      const b64 = base64List[i]
+      if (b64) {
+        try {
+          const base64Data = b64.replace(/^data:image\/\w+;base64,/, "")
+          const inputBuffer = Buffer.from(base64Data, "base64")
+          const { compressedBuffer, ext } = await compressImage(inputBuffer)
+
+          const safeFilename = `${Date.now()}_${i}_img${ext}`
+          const storedUrl = await uploadToReferenceStorage(compressedBuffer, safeFilename, ext)
+          referenceUrls.push(storedUrl)
+        } catch (uploadErr) {
+          console.error("Error saving base64 reference image:", uploadErr)
         }
-        const ext = data.referenceImageName ? path.extname(data.referenceImageName) : ".png"
-        const safeFilename = `${Date.now()}_img${ext || ".png"}`
-        const filePath = path.join(uploadDir, safeFilename)
-        fs.writeFileSync(filePath, buffer)
-        referenceImageUrl = `/uploads/reference-images/${safeFilename}`
-      } catch (uploadErr) {
-        console.error("Error saving base64 reference image:", uploadErr)
       }
     }
+  }
+
+  if (referenceUrls.length > 0) {
+    referenceImageUrl = JSON.stringify(referenceUrls)
   }
 
   if (!clientName) {

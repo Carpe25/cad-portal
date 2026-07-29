@@ -112,17 +112,99 @@ export async function createGoogleDriveFolder(
 
 export async function uploadFilesToDriveFolder(
   folderId: string,
-  files: Array<{ name: string; mimeType: string; buffer: Buffer }>
+  files: Array<{ name: string; relativePath?: string; mimeType: string; buffer: Buffer }>
 ): Promise<{ uploadedCount: number }> {
   try {
     const drive = getDriveClient()
     const targetEmail = process.env.GOOGLE_DRIVE_TARGET_EMAIL
     let uploadedCount = 0
 
+    const folderCache = new Map<string, string>()
+
+    async function getOrCreateSubfolder(parentId: string, folderName: string): Promise<string> {
+      const cacheKey = `${parentId}:${folderName}`
+      if (folderCache.has(cacheKey)) {
+        return folderCache.get(cacheKey)!
+      }
+
+      const safeFolderName = folderName.replace(/\\/g, "\\\\").replace(/'/g, "\\'")
+      const query = `'${parentId}' in parents and name = '${safeFolderName}' and mimeType = 'application/vnd.google-apps.folder' and trashed = false`
+
+      try {
+        const listRes = await drive.files.list({
+          q: query,
+          supportsAllDrives: true,
+          includeItemsFromAllDrives: true,
+          fields: "files(id, name)",
+        })
+
+        if (listRes.data.files && listRes.data.files.length > 0) {
+          const existingId = listRes.data.files[0].id!
+          folderCache.set(cacheKey, existingId)
+          return existingId
+        }
+      } catch (err) {
+        console.error(`Error searching folder "${folderName}" in Drive:`, err)
+      }
+
+      const fileMetadata: Record<string, unknown> = {
+        name: folderName,
+        mimeType: "application/vnd.google-apps.folder",
+        parents: [parentId],
+      }
+
+      const response = await drive.files.create({
+        requestBody: fileMetadata,
+        supportsAllDrives: true,
+        fields: "id",
+      })
+
+      const newFolderId = response.data.id
+      if (!newFolderId) {
+        throw new Error(`Failed to create Google Drive subfolder: ${folderName}`)
+      }
+
+      if (targetEmail) {
+        try {
+          await drive.permissions.create({
+            fileId: newFolderId,
+            supportsAllDrives: true,
+            requestBody: {
+              role: "writer",
+              type: "user",
+              emailAddress: targetEmail,
+            },
+          })
+        } catch (permError) {
+          console.error("Error sharing subfolder permission with target email:", permError)
+        }
+      }
+
+      folderCache.set(cacheKey, newFolderId)
+      return newFolderId
+    }
+
     for (const file of files) {
+      const fullPath = file.relativePath || file.name
+      const normalizedPath = fullPath.replace(/\\/g, "/")
+      const parts = normalizedPath.split("/").filter(Boolean)
+
+      let targetFolderId = folderId
+      let fileName = file.name
+
+      if (parts.length > 1) {
+        fileName = parts[parts.length - 1]
+        const folderParts = parts.slice(0, -1)
+        for (const folderName of folderParts) {
+          targetFolderId = await getOrCreateSubfolder(targetFolderId, folderName)
+        }
+      } else if (parts.length === 1) {
+        fileName = parts[0]
+      }
+
       const fileMetadata = {
-        name: file.name,
-        parents: [folderId],
+        name: fileName,
+        parents: [targetFolderId],
       }
 
       // Generate a fresh Readable stream for each file upload attempt to avoid stream.push() after EOF

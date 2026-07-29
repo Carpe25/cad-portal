@@ -99,8 +99,9 @@ export function TaskActions({
         if (validFiles.length > 0) {
           for (let i = 0; i < validFiles.length; i++) {
             const file = validFiles[i]
+            const relPath = file.webkitRelativePath || file.name
             setUploadStatus(
-              `Uploading file ${i + 1} of ${validFiles.length}: ${file.name}...`
+              `Uploading file ${i + 1} of ${validFiles.length}: ${relPath}...`
             )
 
             const res = await fetch(`/api/tasks/${task.id}/upload`, {
@@ -108,6 +109,7 @@ export function TaskActions({
               headers: {
                 "Content-Type": "application/octet-stream",
                 "x-file-name": encodeURIComponent(file.name),
+                "x-relative-path": encodeURIComponent(relPath),
                 "x-file-type": encodeURIComponent(file.type || "application/octet-stream"),
                 "x-drive-link": encodeURIComponent(driveLink || ""),
                 "x-is-last": i === validFiles.length - 1 ? "true" : "false",
@@ -214,7 +216,7 @@ export function TaskActions({
                       </p>
                       <ul className="max-h-24 overflow-y-auto text-[11px] text-muted-foreground space-y-0.5 font-mono">
                         {selectedFiles.slice(0, 10).map((f, i) => (
-                          <li key={i} className="truncate">• {f.name}</li>
+                          <li key={i} className="truncate">• {f.webkitRelativePath || f.name}</li>
                         ))}
                         {selectedFiles.length > 10 && (
                           <li className="italic text-primary">...and {selectedFiles.length - 10} more files</li>
@@ -237,20 +239,8 @@ export function TaskActions({
             ) : (
               <div className="flex flex-col gap-3">
                 <p className="text-xs text-muted-foreground">
-                  Paste the Drive link to your completed CAD file and add any description/notes for QC.
+                  Provide description / notes for QC before submitting.
                 </p>
-                <div className="flex flex-col gap-1.5">
-                  <Label htmlFor="drive_link" className="text-xs">
-                    Drive Link
-                  </Label>
-                  <Input
-                    id="drive_link"
-                    placeholder="https://drive.google.com/drive/folders/..."
-                    value={driveLink}
-                    onChange={(e) => setDriveLink(e.target.value)}
-                    disabled={isPending}
-                  />
-                </div>
                 <div className="flex flex-col gap-1.5">
                   <Label htmlFor="designer_notes" className="text-xs">
                     Description / Notes for QC
@@ -265,8 +255,8 @@ export function TaskActions({
                   />
                 </div>
                 <Button
-                  onClick={() => run(() => submitForQCAction(task.id, driveLink, designerNotes))}
-                  disabled={isPending || !driveLink.trim()}
+                  onClick={() => run(() => submitForQCAction(task.id, "", designerNotes))}
+                  disabled={isPending}
                 >
                   {isPending ? "Submitting…" : "Submit for QC"}
                 </Button>
@@ -317,7 +307,7 @@ export function TaskActions({
                       </p>
                       <ul className="max-h-24 overflow-y-auto text-[11px] text-muted-foreground space-y-0.5 font-mono">
                         {selectedFiles.slice(0, 10).map((f, i) => (
-                          <li key={i} className="truncate">• {f.name}</li>
+                          <li key={i} className="truncate">• {f.webkitRelativePath || f.name}</li>
                         ))}
                       </ul>
                     </div>
@@ -337,18 +327,6 @@ export function TaskActions({
             ) : (
               <div className="flex flex-col gap-3">
                 <div className="flex flex-col gap-1.5">
-                  <Label htmlFor="drive_link_resubmit" className="text-xs">
-                    Drive Link
-                  </Label>
-                  <Input
-                    id="drive_link_resubmit"
-                    placeholder="Paste updated drive link..."
-                    value={driveLink}
-                    onChange={(e) => setDriveLink(e.target.value)}
-                    disabled={isPending}
-                  />
-                </div>
-                <div className="flex flex-col gap-1.5">
                   <Label htmlFor="designer_notes_resubmit" className="text-xs">
                     Description / Notes for QC
                   </Label>
@@ -362,8 +340,8 @@ export function TaskActions({
                   />
                 </div>
                 <Button
-                  onClick={() => run(() => submitForQCAction(task.id, driveLink, designerNotes))}
-                  disabled={isPending || !driveLink.trim()}
+                  onClick={() => run(() => submitForQCAction(task.id, "", designerNotes))}
+                  disabled={isPending}
                 >
                   {isPending ? "Resubmitting…" : "Resubmit for QC"}
                 </Button>
