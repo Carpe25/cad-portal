@@ -33,14 +33,21 @@ export async function assignToMeAction(taskId: string) {
   revalidatePath("/tasks")
 }
 
-export async function submitForQCAction(taskId: string, driveLink?: string, designerNotes?: string) {
+export async function submitForQCAction(
+  taskId: string,
+  driveLink?: string,
+  designerNotes?: string,
+  folderPath?: string
+) {
   const session = await getSession()
   if (!session) return { error: "Unauthorized" }
 
-  const link = driveLink ? driveLink.trim() : ""
+  const cleanFolderPath = folderPath ? folderPath.trim() : null
+  const link = driveLink && driveLink.trim() ? driveLink.trim() : (cleanFolderPath || "")
 
-  // Ensure column exists
+  // Ensure columns exist
   await sql`ALTER TABLE submissions ADD COLUMN IF NOT EXISTS designer_notes TEXT`
+  await sql`ALTER TABLE submissions ADD COLUMN IF NOT EXISTS folder_path TEXT`
 
   // Count existing submissions to determine version number
   const countRows = await sql`
@@ -50,8 +57,8 @@ export async function submitForQCAction(taskId: string, driveLink?: string, desi
   const version = `V${count + 1}`
 
   await sql`
-    INSERT INTO submissions (task_id, version, drive_link, submitted_by, outcome, designer_notes)
-    VALUES (${taskId}, ${version}, ${link}, ${session.id}, 'pending', ${designerNotes ? designerNotes.trim() : null})
+    INSERT INTO submissions (task_id, version, drive_link, submitted_by, outcome, designer_notes, folder_path)
+    VALUES (${taskId}, ${version}, ${link}, ${session.id}, 'pending', ${designerNotes ? designerNotes.trim() : null}, ${cleanFolderPath})
   `
 
   await sql`
@@ -60,6 +67,7 @@ export async function submitForQCAction(taskId: string, driveLink?: string, desi
 
   revalidatePath(`/tasks/${taskId}`)
   revalidatePath("/tasks")
+  revalidatePath("/qc-queue")
 }
 
 export async function submitForQCWithFilesAction(formData: FormData) {

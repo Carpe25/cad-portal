@@ -13,6 +13,7 @@ import {
 } from "@/lib/task-utils"
 import { ParsedTrelloCard } from "@/lib/trello-types"
 import { PageHeader } from "@/components/portal/page-header"
+import { FolderPathLink } from "@/components/folder-path-link"
 
 type Task = {
   id: string
@@ -57,6 +58,7 @@ type Submission = {
   outcome: string
   remarks: string | null
   designer_notes: string | null
+  folder_path: string | null
 }
 
 const OUTCOME_BADGE: Record<string, string> = {
@@ -656,14 +658,24 @@ export default async function TaskDetailPage({
                         {sub.reviewer_name &&
                           ` · Reviewed by ${sub.reviewer_name}`}
                       </p>
-                      <a
-                        href={sub.drive_link}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="mt-1.5 inline-block text-xs text-primary hover:underline"
-                      >
-                        Open CAD file →
-                      </a>
+                      {sub.drive_link && sub.drive_link.startsWith("http") && (
+                        <a
+                          href={sub.drive_link}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="mt-1.5 inline-block text-xs text-primary hover:underline"
+                        >
+                          Open CAD file / Link →
+                        </a>
+                      )}
+                      {(sub.folder_path || (sub.drive_link && !sub.drive_link.startsWith("http"))) && (
+                        <div className="mt-2">
+                          <FolderPathLink
+                            path={sub.folder_path || sub.drive_link}
+                            label={`Shared Folder Path (${sub.version})`}
+                          />
+                        </div>
+                      )}
                       {sub.designer_notes && (
                         <div className="mt-2.5 rounded-lg border border-primary/20 bg-primary/8 px-3.5 py-2.5">
                           <p className="text-xs font-semibold text-primary">
@@ -691,7 +703,7 @@ export default async function TaskDetailPage({
             )}
           </div>
 
-          {/* Right: Drive Folder Preview */}
+          {/* Right: Drive Folder / Reference Files Preview */}
           <div className="flex flex-col gap-4">
             <div className="overflow-hidden rounded-xl border border-border bg-card shadow-xs">
               <div className="px-5 py-4">
@@ -700,6 +712,32 @@ export default async function TaskDetailPage({
                 </h2>
               </div>
               <Separator />
+
+              {/* Submitted Local / Shared Server Folder Paths */}
+              {(() => {
+                const folderSubmissions = submissions.filter((s) =>
+                  Boolean(s.folder_path?.trim() || (s.drive_link && !s.drive_link.startsWith("http")))
+                )
+                if (folderSubmissions.length === 0) return null
+
+                return (
+                  <div className="p-4 bg-muted/20 flex flex-col gap-3 border-b border-border">
+                    <span className="text-[11px] font-semibold text-muted-foreground tracking-wider uppercase">
+                      Submitted Shared Folder Path{folderSubmissions.length > 1 ? "s" : ""}
+                    </span>
+                    <div className="flex flex-col gap-2.5">
+                      {folderSubmissions.map((sub) => (
+                        <FolderPathLink
+                          key={sub.id}
+                          path={sub.folder_path || sub.drive_link}
+                          label={`${sub.version} · Submitted by ${sub.submitter_name}`}
+                        />
+                      ))}
+                    </div>
+                  </div>
+                )
+              })()}
+
               {embedUrl ? (
                 <iframe
                   src={embedUrl}
@@ -708,23 +746,27 @@ export default async function TaskDetailPage({
                   allow="autoplay"
                 />
               ) : (
-                <div className="flex flex-col items-center gap-2 px-4 py-10 text-center">
-                  <p className="text-sm text-muted-foreground">
-                    {task.drive_folder_link
-                      ? "Could not parse Drive folder link."
-                      : "No Drive folder linked yet."}
-                  </p>
-                  {task.drive_folder_link && (
-                    <a
-                      href={task.drive_folder_link}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="text-xs text-primary hover:underline"
-                    >
-                      Open in Drive →
-                    </a>
-                  )}
-                </div>
+                submissions.every(
+                  (s) => !s.folder_path && (!s.drive_link || s.drive_link.startsWith("http"))
+                ) && (
+                  <div className="flex flex-col items-center gap-2 px-4 py-10 text-center">
+                    <p className="text-sm text-muted-foreground">
+                      {task.drive_folder_link
+                        ? "Could not parse Drive folder link."
+                        : "No Drive folder linked yet."}
+                    </p>
+                    {task.drive_folder_link && (
+                      <a
+                        href={task.drive_folder_link}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-xs text-primary hover:underline"
+                      >
+                        Open in Drive →
+                      </a>
+                    )}
+                  </div>
+                )
               )}
               {task.drive_folder_link && embedUrl && (
                 <div className="border-t border-border px-4 py-2">

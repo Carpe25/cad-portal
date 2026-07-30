@@ -54,6 +54,7 @@ export function TaskActions({
   const [showReopen, setShowReopen] = useState(false)
   const [revisionNotes, setRevisionNotes] = useState("")
   const [designerNotes, setDesignerNotes] = useState("")
+  const [folderPath, setFolderPath] = useState("")
   const [newPoints, setNewPoints] = useState(String(currentPoints))
   const [newDesignerId, setNewDesignerId] = useState("")
 
@@ -284,10 +285,22 @@ export function TaskActions({
             ) : (
               <div className="flex flex-col gap-3">
                 <p className="text-xs text-muted-foreground">
-                  Provide description / notes for QC before submitting.
+                  Provide folder path and description / notes for QC before submitting.
                 </p>
                 <div className="flex flex-col gap-1.5">
-                  <Label htmlFor="designer_notes" className="text-xs">
+                  <Label htmlFor="folder_path" className="text-xs font-medium">
+                    Local / Shared Folder Path
+                  </Label>
+                  <Input
+                    id="folder_path"
+                    placeholder="e.g. \\server\share\folder or Z:\Projects\CAD"
+                    value={folderPath}
+                    onChange={(e) => setFolderPath(e.target.value)}
+                    disabled={isPending}
+                  />
+                </div>
+                <div className="flex flex-col gap-1.5">
+                  <Label htmlFor="designer_notes" className="text-xs font-medium">
                     Description / Notes for QC
                   </Label>
                   <Textarea
@@ -300,7 +313,7 @@ export function TaskActions({
                   />
                 </div>
                 <Button
-                  onClick={() => run(() => submitForQCAction(task.id, "", designerNotes))}
+                  onClick={() => run(() => submitForQCAction(task.id, "", designerNotes, folderPath))}
                   disabled={isPending}
                 >
                   {isPending ? "Submitting…" : "Submit for QC"}
@@ -372,7 +385,19 @@ export function TaskActions({
             ) : (
               <div className="flex flex-col gap-3">
                 <div className="flex flex-col gap-1.5">
-                  <Label htmlFor="designer_notes_resubmit" className="text-xs">
+                  <Label htmlFor="folder_path_resubmit" className="text-xs font-medium">
+                    Local / Shared Folder Path
+                  </Label>
+                  <Input
+                    id="folder_path_resubmit"
+                    placeholder="e.g. \\server\share\folder or Z:\Projects\CAD"
+                    value={folderPath}
+                    onChange={(e) => setFolderPath(e.target.value)}
+                    disabled={isPending}
+                  />
+                </div>
+                <div className="flex flex-col gap-1.5">
+                  <Label htmlFor="designer_notes_resubmit" className="text-xs font-medium">
                     Description / Notes for QC
                   </Label>
                   <Textarea
@@ -385,7 +410,7 @@ export function TaskActions({
                   />
                 </div>
                 <Button
-                  onClick={() => run(() => submitForQCAction(task.id, "", designerNotes))}
+                  onClick={() => run(() => submitForQCAction(task.id, "", designerNotes, folderPath))}
                   disabled={isPending}
                 >
                   {isPending ? "Resubmitting…" : "Resubmit for QC"}
