@@ -1,7 +1,7 @@
 "use client"
 
 import { useState } from "react"
-import { Folder, Copy, Check, ExternalLink, Loader2 } from "lucide-react"
+import { Folder, Copy, Check, ExternalLink, Loader2, Download, HelpCircle } from "lucide-react"
 
 type Props = {
   path: string
@@ -13,6 +13,7 @@ export function FolderPathLink({ path, label, className = "" }: Props) {
   const [copied, setCopied] = useState(false)
   const [opening, setOpening] = useState(false)
   const [statusMessage, setStatusMessage] = useState<string | null>(null)
+  const [showProdHelp, setShowProdHelp] = useState(false)
 
   if (!path || !path.trim()) return null
 
@@ -41,6 +42,7 @@ export function FolderPathLink({ path, label, className = "" }: Props) {
     setStatusMessage("Opening folder...")
 
     try {
+      // 1. Try server API route (works when server is running on local network / machine)
       const res = await fetch("/api/open-folder", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -51,19 +53,32 @@ export function FolderPathLink({ path, label, className = "" }: Props) {
 
       if (res.ok && data.success) {
         setStatusMessage("Opened in File Explorer!")
-      } else {
-        // Fallback: If server open failed (e.g. running on remote cloud), copy to clipboard
-        await navigator.clipboard.writeText(cleanPath).catch(() => {})
-        setStatusMessage("Copied path (Paste in File Explorer)")
+        setOpening(false)
+        setTimeout(() => setStatusMessage(null), 3000)
+        return
       }
     } catch (err) {
-      console.error("Error calling open-folder API:", err)
-      await navigator.clipboard.writeText(cleanPath).catch(() => {})
-      setStatusMessage("Copied path (Paste in File Explorer)")
-    } finally {
-      setOpening(false)
-      setTimeout(() => setStatusMessage(null), 3000)
+      console.error("Error calling local open-folder API:", err)
     }
+
+    // 2. Production fallback: Try custom protocol openfolder:
+    try {
+      const openFolderUrl = `openfolder:${encodeURIComponent(cleanPath)}`
+      window.location.href = openFolderUrl
+      setStatusMessage("Opening File Explorer...")
+    } catch (err) {
+      console.error("Failed to trigger openfolder protocol:", err)
+    }
+
+    // 3. Fallback: Copy path to clipboard & show help hint
+    try {
+      await navigator.clipboard.writeText(cleanPath)
+      setStatusMessage("Path copied! (Paste in File Explorer)")
+      setShowProdHelp(true)
+    } catch {}
+
+    setOpening(false)
+    setTimeout(() => setStatusMessage(null), 4000)
   }
 
   return (
@@ -124,8 +139,31 @@ export function FolderPathLink({ path, label, className = "" }: Props) {
               </>
             )}
           </button>
+
+          <a
+            href="/api/download-reg"
+            title="Setup 1-Click Folder Open on Windows PC"
+            className="flex h-7 w-7 items-center justify-center rounded-md border border-border bg-background text-muted-foreground hover:bg-accent hover:text-foreground transition-colors cursor-pointer"
+          >
+            <Download className="h-3.5 w-3.5 text-muted-foreground" />
+          </a>
         </div>
       </div>
+
+      {showProdHelp && (
+        <div className="mt-1 flex items-center justify-between rounded bg-amber-500/10 px-2.5 py-1.5 text-[10.5px] text-amber-700 dark:text-amber-300">
+          <span className="flex items-center gap-1">
+            <HelpCircle className="h-3 w-3 shrink-0 text-amber-500" />
+            <span>Path copied! Paste in File Explorer (`Win + R`) or download 1-click Windows setup.</span>
+          </span>
+          <a
+            href="/api/download-reg"
+            className="font-semibold text-primary underline underline-offset-2 hover:text-primary/80 shrink-0 ml-2"
+          >
+            Download Setup (.reg)
+          </a>
+        </div>
+      )}
     </div>
   )
 }
