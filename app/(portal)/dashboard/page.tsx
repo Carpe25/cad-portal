@@ -23,6 +23,8 @@ import { PageHeader } from "@/components/portal/page-header"
 import { StatCard } from "@/components/portal/stat-card"
 import { EmptyState } from "@/components/portal/empty-state"
 
+import { KanbanBoard, type KanbanTask, type Designer } from "@/components/portal/kanban-board"
+
 type Task = {
   id: string
   readable_id: string
@@ -55,14 +57,16 @@ export default async function DashboardPage() {
 
   return (
     <main className="min-h-full">
-      <div className="mx-auto w-full max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
+      <div className="mx-auto w-full max-w-7xl 2xl:max-w-[1920px] px-4 py-8 sm:px-6 lg:px-8">
         <PageHeader
           roleLabel={roleLabel}
           title={`Welcome back, ${firstName}`}
           description={
             isManager
               ? "Team overview and active workflows."
-              : "Your work today at a glance."
+              : isQC
+                ? "Quality control queue and task board."
+                : "Your work today at a glance."
           }
         />
         <Suspense fallback={<DashboardSkeleton cols={isManager ? 4 : 3} />}>
@@ -81,14 +85,25 @@ export default async function DashboardPage() {
 
 // --- Manager ---
 async function ManagerContent() {
-  const [inProgress, inQC, approvedThisMonth, presentToday] = await Promise.all(
-    [
+  const [inProgress, inQC, approvedThisMonth, presentToday, rawKanbanTasks, rawDesigners] =
+    await Promise.all([
       sql`SELECT COUNT(*) FROM tasks WHERE status = 'in_progress'`,
       sql`SELECT COUNT(*) FROM tasks WHERE status = 'in_qc_review'`,
       sql`SELECT COUNT(*) FROM tasks WHERE status = 'client_ready' AND DATE_TRUNC('month', created_at) = DATE_TRUNC('month', now())`,
       sql`SELECT COUNT(DISTINCT user_id) FROM attendance WHERE date = CURRENT_DATE AND logout_at IS NULL`,
-    ]
-  )
+      sql`
+        SELECT t.id, t.readable_id, t.title, t.customer_project_no, t.cd_project_no, t.speed, t.client_name, t.status, t.priority, t.deadline, t.assigned_to, t.created_at,
+               u.name AS designer_name
+        FROM tasks t
+        LEFT JOIN users u ON t.assigned_to = u.id
+        ORDER BY t.created_at DESC
+      `,
+      sql`
+        SELECT id, name FROM users
+        WHERE active = true AND roles @> ARRAY['designer']::text[]
+        ORDER BY name ASC
+      `,
+    ])
 
   const stats: Stat[] = [
     {
@@ -121,22 +136,51 @@ async function ManagerContent() {
     },
   ]
 
-  const recentTasks = (await sql`
-    SELECT t.id, t.readable_id, t.title, t.customer_project_no, t.cd_project_no, t.speed, t.status, t.priority, t.deadline,
-           u.name AS designer_name
-    FROM tasks t
-    LEFT JOIN users u ON t.assigned_to = u.id
-    ORDER BY t.created_at DESC
-    LIMIT 8
-  `) as Task[]
+  const tasks = rawKanbanTasks.map((t: any) => ({
+    id: String(t.id),
+    readable_id: String(t.readable_id || ""),
+    title: String(t.title || ""),
+    customer_project_no: t.customer_project_no ? String(t.customer_project_no) : null,
+    cd_project_no: t.cd_project_no ? String(t.cd_project_no) : null,
+    speed: t.speed ? String(t.speed) : null,
+    status: String(t.status || "assigned"),
+    priority: String(t.priority || "medium"),
+    deadline: t.deadline ? String(t.deadline) : null,
+    assigned_to: t.assigned_to ? String(t.assigned_to) : null,
+    designer_name: t.designer_name ? String(t.designer_name) : null,
+    client_name: t.client_name ? String(t.client_name) : null,
+    created_at: t.created_at ? String(t.created_at) : undefined,
+  })) as KanbanTask[]
+
+  const designers = rawDesigners.map((d: any) => ({
+    id: String(d.id),
+    name: String(d.name),
+  })) as Designer[]
 
   return (
-    <DashboardContent
-      stats={stats}
-      tasks={recentTasks}
-      sectionLabel="Recent Tasks"
-      showDesigner
-    />
+    <div className="mt-8 space-y-8">
+      {/* Stats strip (Overview) commented out
+      <div className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-4">
+        {stats.map((s) => (
+          <StatCard key={s.label} {...s} />
+        ))}
+      </div>
+      */}
+
+      {/* Kanban Board section */}
+      <section className="space-y-4">
+        <div className="flex items-center justify-between gap-3">
+          <h2 className="text-base font-semibold text-foreground">Task Workflow Board</h2>
+          <Button variant="ghost" size="sm" asChild>
+            <Link href="/tasks">
+              View All Tasks List
+              <ArrowRight className="ml-1 h-3 w-3" />
+            </Link>
+          </Button>
+        </div>
+        <KanbanBoard tasks={tasks} designers={designers} />
+      </section>
+    </div>
   )
 }
 
@@ -147,11 +191,24 @@ async function QCContent({
   session: { id: string; name: string }
 }) {
   const month = new Date().toISOString().slice(0, 7)
-  const [pending, myActive, monthPoints] = await Promise.all([
-    sql`SELECT COUNT(*) FROM tasks WHERE status = 'in_qc_review'`,
-    sql`SELECT COUNT(*) FROM tasks WHERE assigned_to = ${session.id} AND status IN ('assigned', 'in_progress')`,
-    sql`SELECT COALESCE(SUM(points),0) AS total FROM points_log WHERE user_id = ${session.id} AND month = ${month}`,
-  ])
+  const [pending, myActive, monthPoints, rawKanbanTasks, rawDesigners] =
+    await Promise.all([
+      sql`SELECT COUNT(*) FROM tasks WHERE status = 'in_qc_review'`,
+      sql`SELECT COUNT(*) FROM tasks WHERE assigned_to = ${session.id} AND status IN ('assigned', 'in_progress')`,
+      sql`SELECT COALESCE(SUM(points),0) AS total FROM points_log WHERE user_id = ${session.id} AND month = ${month}`,
+      sql`
+        SELECT t.id, t.readable_id, t.title, t.customer_project_no, t.cd_project_no, t.speed, t.client_name, t.status, t.priority, t.deadline, t.assigned_to, t.created_at,
+               u.name AS designer_name
+        FROM tasks t
+        LEFT JOIN users u ON t.assigned_to = u.id
+        ORDER BY t.created_at DESC
+      `,
+      sql`
+        SELECT id, name FROM users
+        WHERE active = true AND roles @> ARRAY['designer']::text[]
+        ORDER BY name ASC
+      `,
+    ])
 
   const stats: Stat[] = [
     {
@@ -177,22 +234,51 @@ async function QCContent({
     },
   ]
 
-  const myTasks = (await sql`
-    SELECT id, readable_id, title, customer_project_no, cd_project_no, speed, status, priority, deadline
-    FROM tasks
-    WHERE assigned_to = ${session.id} AND status IN ('assigned', 'in_progress', 'revision_requested')
-    ORDER BY
-      CASE status WHEN 'assigned' THEN 0 WHEN 'revision_requested' THEN 1 ELSE 2 END,
-      deadline ASC NULLS LAST
-    LIMIT 6
-  `) as Task[]
+  const tasks = rawKanbanTasks.map((t: any) => ({
+    id: String(t.id),
+    readable_id: String(t.readable_id || ""),
+    title: String(t.title || ""),
+    customer_project_no: t.customer_project_no ? String(t.customer_project_no) : null,
+    cd_project_no: t.cd_project_no ? String(t.cd_project_no) : null,
+    speed: t.speed ? String(t.speed) : null,
+    status: String(t.status || "assigned"),
+    priority: String(t.priority || "medium"),
+    deadline: t.deadline ? String(t.deadline) : null,
+    assigned_to: t.assigned_to ? String(t.assigned_to) : null,
+    designer_name: t.designer_name ? String(t.designer_name) : null,
+    client_name: t.client_name ? String(t.client_name) : null,
+    created_at: t.created_at ? String(t.created_at) : undefined,
+  })) as KanbanTask[]
+
+  const designers = rawDesigners.map((d: any) => ({
+    id: String(d.id),
+    name: String(d.name),
+  })) as Designer[]
 
   return (
-    <DashboardContent
-      stats={stats}
-      tasks={myTasks}
-      sectionLabel="My Active Work"
-    />
+    <div className="mt-8 space-y-8">
+      {/* Stats strip (Overview) commented out
+      <div className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-4">
+        {stats.map((s) => (
+          <StatCard key={s.label} {...s} />
+        ))}
+      </div>
+      */}
+
+      {/* Kanban Board section */}
+      <section className="space-y-4">
+        <div className="flex items-center justify-between gap-3">
+          <h2 className="text-base font-semibold text-foreground">Task Workflow Board</h2>
+          <Button variant="ghost" size="sm" asChild>
+            <Link href="/tasks">
+              View All Tasks List
+              <ArrowRight className="ml-1 h-3 w-3" />
+            </Link>
+          </Button>
+        </div>
+        <KanbanBoard tasks={tasks} designers={designers} />
+      </section>
+    </div>
   )
 }
 
@@ -284,12 +370,13 @@ function DashboardContent({
 }) {
   return (
     <div className="mt-8 space-y-8">
-      {/* Stats strip */}
+      {/* Stats strip (Overview) commented out
       <div className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-4">
         {stats.map((s) => (
           <StatCard key={s.label} {...s} />
         ))}
       </div>
+      */}
 
       {/* Recent tasks section */}
       <section className="space-y-3">
