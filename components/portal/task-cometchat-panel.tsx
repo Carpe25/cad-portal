@@ -104,9 +104,9 @@ export function TaskCometChatPanel({
       }
 
       // Check or Create Group for this Task
+      let group: any = null
       try {
-        const group = await CometChat.getGroup(groupId)
-        setCometchatGroup(group)
+        group = await CometChat.getGroup(groupId)
       } catch (groupError: any) {
         // Group doesn't exist yet, create a new Public Group
         const groupType = CometChat.GROUP_TYPE.PUBLIC
@@ -116,18 +116,61 @@ export function TaskCometChatPanel({
           groupType
         )
         try {
-          const createdGroup = await CometChat.createGroup(newGroup)
-          setCometchatGroup(createdGroup)
+          group = await CometChat.createGroup(newGroup)
         } catch (createErr) {
           // Fallback if group was created concurrently
-          const fetchedGroup = await CometChat.getGroup(groupId)
-          setCometchatGroup(fetchedGroup)
+          group = await CometChat.getGroup(groupId)
+        }
+      }
+
+      // Ensure logged in user has joined the group
+      if (group) {
+        try {
+          const gType = group.getGroupType
+            ? group.getGroupType()
+            : CometChat.GROUP_TYPE.PUBLIC
+          await CometChat.joinGroup(groupId, gType as any)
+        } catch (joinError: any) {
+          // Ignore error if user is already a member or joined
+          const errMsg =
+            joinError?.message || joinError?.devMessage || ""
+          const errCode = joinError?.code || ""
+          if (
+            !errCode.includes("ALREADY") &&
+            !errMsg.toLowerCase().includes("already")
+          ) {
+            console.warn("CometChat joinGroup notice:", joinError)
+          }
+        }
+
+        try {
+          const updatedGroup = await CometChat.getGroup(groupId)
+          setCometchatGroup(updatedGroup)
+        } catch {
+          setCometchatGroup(group)
         }
       }
 
       setIsInitializing(false)
     } catch (err: any) {
       console.error("CometChat Init Error:", err)
+      const errCode = err?.code || ""
+      const errMsg = err?.message || err?.devMessage || ""
+      if (
+        errCode === "ERR_NOT_A_MEMBER" ||
+        errMsg.toLowerCase().includes("not a member")
+      ) {
+        try {
+          const { CometChat } = await import("@cometchat/chat-sdk-javascript")
+          await CometChat.joinGroup(groupId, CometChat.GROUP_TYPE.PUBLIC as any)
+          const refetchedGroup = await CometChat.getGroup(groupId)
+          setCometchatGroup(refetchedGroup)
+          setIsInitializing(false)
+          return
+        } catch (retryErr) {
+          console.error("Failed auto-joining group on retry:", retryErr)
+        }
+      }
       setError(err?.message || "Failed to connect to discussion server")
       setIsInitializing(false)
     }
