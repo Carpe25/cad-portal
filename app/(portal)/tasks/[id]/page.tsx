@@ -15,6 +15,7 @@ import { ParsedTrelloCard } from "@/lib/trello-types"
 import { PageHeader } from "@/components/portal/page-header"
 import { FolderPathLink } from "@/components/folder-path-link"
 import { TaskCometChatPanel } from "@/components/portal/task-cometchat-wrapper"
+import { TaskPartyKitPanel } from "@/components/portal/task-partykit-panel"
 
 type Task = {
   id: string
@@ -88,6 +89,7 @@ export default async function TaskDetailPage({
   const session = await getSession()
   if (!session) redirect("/login")
 
+  const cleanId = id.trim()
   const taskRows = await sql`
     SELECT
       t.*,
@@ -96,7 +98,9 @@ export default async function TaskDetailPage({
     FROM tasks t
     LEFT JOIN users u ON t.assigned_to = u.id
     LEFT JOIN users m ON t.created_by = m.id
-    WHERE t.id = ${id}
+    WHERE LOWER(t.id::text) = LOWER(${cleanId})
+       OR LOWER(t.readable_id) = LOWER(${cleanId})
+       OR t.id::text = REPLACE(${cleanId}, '-', '')
   `
 
   if (!taskRows.length) notFound()
@@ -111,7 +115,7 @@ export default async function TaskDetailPage({
     FROM submissions s
     LEFT JOIN users su ON s.submitted_by = su.id
     LEFT JOIN users ru ON s.reviewed_by = ru.id
-    WHERE s.task_id = ${id}
+    WHERE s.task_id::text = ${task.id}::text
     ORDER BY s.submitted_at ASC
   `) as Submission[]
 
@@ -784,7 +788,21 @@ export default async function TaskDetailPage({
             </div>
 
             {/* Task Discussion Panel */}
-            <TaskCometChatPanel
+            {/* 
+              CometChat Panel (Commented out - uncomment below to switch back to CometChat):
+              <TaskCometChatPanel
+                taskId={task.id}
+                taskTitle={taskHeading}
+                currentUser={{
+                  id: session.id,
+                  name: session.name,
+                  email: session.email,
+                }}
+              />
+            */}
+
+            {/* PartyKit + Shadcn Live Discussion Panel */}
+            <TaskPartyKitPanel
               taskId={task.id}
               taskTitle={taskHeading}
               currentUser={{
@@ -793,6 +811,7 @@ export default async function TaskDetailPage({
                 email: session.email,
               }}
             />
+
           </div>
         </div>
       </div>
