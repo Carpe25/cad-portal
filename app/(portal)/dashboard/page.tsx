@@ -6,7 +6,7 @@ import { sql } from "@/lib/db"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Skeleton } from "@/components/ui/skeleton"
-import { STATUS_LABELS, STATUS_COLORS, PRIORITY_COLORS, SPEED_COLORS } from "@/lib/task-utils"
+import { STATUS_LABELS, STATUS_COLORS, PRIORITY_COLORS, SPEED_COLORS, isTaskOverdue } from "@/lib/task-utils"
 import {
   ArrowRight,
   Clock,
@@ -446,8 +446,16 @@ function DashboardContent({
                       {task.deadline && (
                         <>
                           <span>·</span>
-                          <Clock className="h-3 w-3" />
-                          <span>{formatDeadline(task.deadline)}</span>
+                          {isTaskOverdue(task.deadline, task.status) ? (
+                            <Badge variant="destructive" className="bg-red-500/10 text-red-600 dark:text-red-400 border-red-500/30 text-[10px] px-1.5 py-0 font-semibold">
+                              Overdue
+                            </Badge>
+                          ) : (
+                            <>
+                              <Clock className="h-3 w-3" />
+                              <span>{formatDeadline(task.deadline)}</span>
+                            </>
+                          )}
                         </>
                       )}
                       {/* Mobile-only badges */}
@@ -490,9 +498,15 @@ function DashboardContent({
                   </div>
 
                   {/* Deadline */}
-                  <span className="hidden text-right text-xs text-muted-foreground tabular-nums lg:block">
-                    {formatDeadline(task.deadline)}
-                  </span>
+                  <div className="hidden text-right text-xs text-muted-foreground tabular-nums lg:block">
+                    {isTaskOverdue(task.deadline, task.status) ? (
+                      <Badge variant="destructive" className="bg-red-500/10 text-red-600 dark:text-red-400 border-red-500/30 text-xs font-semibold">
+                        Overdue
+                      </Badge>
+                    ) : (
+                      formatDeadline(task.deadline)
+                    )}
+                  </div>
                 </Link>
               ))}
             </div>

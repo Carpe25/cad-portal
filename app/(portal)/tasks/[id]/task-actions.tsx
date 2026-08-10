@@ -565,7 +565,7 @@ export function TaskActions({
                           reopenForClientRevisionAction(
                             task.id,
                             revisionNotes,
-                            parseInt(newPoints, 10) || currentPoints,
+                            parseFloat(newPoints) || currentPoints,
                             newDesignerId || null
                           )
                         )

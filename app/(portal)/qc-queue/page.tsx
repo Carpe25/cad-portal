@@ -4,7 +4,7 @@ import { getSession } from "@/lib/session"
 import { redirect } from "next/navigation"
 import { sql } from "@/lib/db"
 import { DriveLink } from "./drive-link"
-import { PRIORITY_COLORS, SPEED_COLORS } from "@/lib/task-utils"
+import { PRIORITY_COLORS, SPEED_COLORS, isSubmissionLate } from "@/lib/task-utils"
 import { CheckCircle2 } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { Skeleton } from "@/components/ui/skeleton"
@@ -20,6 +20,7 @@ type QueueItem = {
   speed: string | null
   client_name: string
   priority: string
+  deadline: string | null
   designer_name: string
   submission_id: string
   version: string
@@ -62,6 +63,7 @@ async function QCQueueContent() {
       t.speed,
       t.client_name,
       t.priority,
+      t.deadline,
       u.name AS designer_name,
       s.id AS submission_id,
       s.version,
@@ -142,14 +144,21 @@ async function QCQueueContent() {
             {/* Footer */}
             <div className="flex items-center justify-between border-t border-border/60 pt-3">
               <DriveLink href={item.drive_link} />
-              <span className="text-xs text-muted-foreground">
-                {new Date(item.submitted_at).toLocaleString("en-IN", {
-                  day: "numeric",
-                  month: "short",
-                  hour: "2-digit",
-                  minute: "2-digit",
-                })}
-              </span>
+              <div className="flex items-center gap-2">
+                {isSubmissionLate(item.submitted_at, item.deadline) && (
+                  <Badge variant="destructive" className="bg-red-500/10 text-red-600 dark:text-red-400 border-red-500/30 text-[10px] px-1.5 py-0 font-semibold">
+                    Submitted Late
+                  </Badge>
+                )}
+                <span className="text-xs text-muted-foreground">
+                  {new Date(item.submitted_at).toLocaleString("en-IN", {
+                    day: "numeric",
+                    month: "short",
+                    hour: "2-digit",
+                    minute: "2-digit",
+                  })}
+                </span>
+              </div>
             </div>
           </Link>
         ))}

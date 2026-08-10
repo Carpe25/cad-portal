@@ -31,16 +31,80 @@ const CATEGORIES = [
   { code: "BH", label: "Brooch" },
 ]
 
+const CATEGORY_DEADLINE_HOURS: Record<string, number> = {
+  RN: 24, // Ring - 24hrs
+  PN: 24, // Pendant - 24 hrs
+  ER: 36, // Earring - 36 hrs
+  NK: 56, // Necklace - 56 hrs
+  OB: 72, // Oval Bangel - 72hrs
+  RB: 72, // Round Bengel - 72hrs
+  CH: 24, // Charm - 24 hrs
+  BR: 48, // Bracelet - 48 hrs
+  CF: 24, // Cufflink - 24 hrs
+  BH: 24, // Brooch - 24hrs
+}
+
 const COMPLEXITIES = ["A", "B", "C", "D"]
 const SPEEDS = ["U", "N"]
 
+function formatDateDDMMYYYY(date: Date): string {
+  const day = String(date.getDate()).padStart(2, "0")
+  const month = String(date.getMonth() + 1).padStart(2, "0")
+  const year = date.getFullYear()
+  return `${day}-${month}-${year}`
+}
+
+function parseDateString(dateStr: string): Date {
+  if (!dateStr) return new Date()
+  const parts = dateStr.trim().split("-")
+  if (parts.length === 3) {
+    if (parts[0].length === 4) {
+      // YYYY-MM-DD
+      return new Date(parseInt(parts[0], 10), parseInt(parts[1], 10) - 1, parseInt(parts[2], 10))
+    } else if (parts[2].length === 4) {
+      // DD-MM-YYYY
+      return new Date(parseInt(parts[2], 10), parseInt(parts[1], 10) - 1, parseInt(parts[0], 10))
+    }
+  }
+  const parsed = new Date(dateStr)
+  return isNaN(parsed.getTime()) ? new Date() : parsed
+}
+
+function calculateDeadlineDate(categoryCode: string, baseDateStr?: string): string {
+  const hours = CATEGORY_DEADLINE_HOURS[categoryCode] ?? 24
+  let baseDate = new Date()
+  if (baseDateStr) {
+    const parsed = parseDateString(baseDateStr)
+    const now = new Date()
+    parsed.setHours(now.getHours(), now.getMinutes(), now.getSeconds())
+    baseDate = parsed
+  }
+  const deadlineDate = new Date(baseDate.getTime() + hours * 60 * 60 * 1000)
+  return formatDateDDMMYYYY(deadlineDate)
+}
+
 function formatDateForFolderName(dateStr: string): string {
   if (!dateStr) return ""
-  const parts = dateStr.split("-")
+  const parts = dateStr.trim().split("-")
   if (parts.length !== 3) return dateStr
-  const year = parts[0].slice(-2)
-  const monthIdx = parseInt(parts[1], 10) - 1
-  const day = parts[2].padStart(2, "0")
+  let year = ""
+  let monthIdx = 0
+  let day = ""
+
+  if (parts[0].length === 4) {
+    // YYYY-MM-DD
+    year = parts[0].slice(-2)
+    monthIdx = parseInt(parts[1], 10) - 1
+    day = parts[2].padStart(2, "0")
+  } else if (parts[2].length === 4) {
+    // DD-MM-YYYY
+    year = parts[2].slice(-2)
+    monthIdx = parseInt(parts[1], 10) - 1
+    day = parts[0].padStart(2, "0")
+  } else {
+    return dateStr
+  }
+
   const months = [
     "Jan", "Feb", "Mar", "Apr", "May", "Jun",
     "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"
@@ -62,6 +126,7 @@ export function CreateTaskForm({
   const [isPending, startTransition] = useTransition()
 
   // Form field states
+  const [cdProjectNo, setCdProjectNo] = useState("")
   const [customerProjectNo, setCustomerProjectNo] = useState("")
   const [speed, setSpeed] = useState("U")
   const [selectedCustomerCode, setSelectedCustomerCode] = useState(
@@ -72,8 +137,13 @@ export function CreateTaskForm({
   const [complexity, setComplexity] = useState("A")
   const [workType, setWorkType] = useState<"New" | "Old">("New")
   const [versionInput, setVersionInput] = useState("V1")
-  const [requestDate, setRequestDate] = useState(
-    new Date().toISOString().split("T")[0]
+  const [requestDate, setRequestDate] = useState(() =>
+    formatDateDDMMYYYY(new Date())
+  )
+
+  // Auto-calculated deadline based on initial category "RN" (24 hrs)
+  const [deadline, setDeadline] = useState(() =>
+    calculateDeadlineDate("RN", formatDateDDMMYYYY(new Date()))
   )
 
   // Handle Work Type change
@@ -84,7 +154,6 @@ export function CreateTaskForm({
 
   // Standard task fields
   const [description, setDescription] = useState("")
-  const [deadline, setDeadline] = useState("")
   const [points, setPoints] = useState("")
   const [driveLink, setDriveLink] = useState("")
   const [priority, setPriority] = useState("medium")
@@ -94,24 +163,19 @@ export function CreateTaskForm({
   const [selectedImageFiles, setSelectedImageFiles] = useState<File[]>([])
   const [imagePreviews, setImagePreviews] = useState<string[]>([])
 
-  // Auto-generate Sr. No. (4 digits e.g. 0001)
+  // Sr. No. (4 digits e.g. 0001)
   const srNoFormatted = String(nextSrNoCount).padStart(4, "0")
 
-  // Auto-generate CD Project No.
-  const cdProjectBase = `${speed}${selectedCustomerCode}${categoryCode}${complexity}${srNoFormatted}`
-  const cdProjectNo = `${cdProjectBase}${versionInput.trim()}`
-
-  // Proposed Google Drive folder name format: U01RND00001_CRkajal1-6-26_V1_01-Jun-26
+  // Proposed Google Drive folder name format
   const formattedDate = formatDateForFolderName(requestDate)
   const folderParts = [
-    cdProjectBase,
+    cdProjectNo.trim(),
     customerProjectNo.trim(),
     versionInput.trim(),
     formattedDate,
   ].filter(Boolean)
 
   const proposedFolderName = folderParts.join("_")
-
 
   // Google Drive folder creation state
   const [isCreatingDriveFolder, setIsCreatingDriveFolder] = useState(false)
@@ -137,13 +201,24 @@ export function CreateTaskForm({
   }
 
   // Update customer when selection changes
-
   const handleCustomerChange = (code: string) => {
     setSelectedCustomerCode(code)
     const cust = customers.find((c) => c.code === code)
     if (cust) {
       setClientName(cust.name)
     }
+  }
+
+  // Handle Category change & update deadline automatically
+  const handleCategoryChange = (code: string) => {
+    setCategoryCode(code)
+    setDeadline(calculateDeadlineDate(code, requestDate))
+  }
+
+  // Handle Request Date change & recalculate deadline
+  const handleRequestDateChange = (dateStr: string) => {
+    setRequestDate(dateStr)
+    setDeadline(calculateDeadlineDate(categoryCode, dateStr))
   }
 
   // Handle reference images selection (multiple)
@@ -200,7 +275,7 @@ export function CreateTaskForm({
     <Card className="shadow-xs border-border">
       <CardContent className="pt-6">
         <form onSubmit={handleSubmit} className="flex flex-col gap-6">
-          {/* Header Banner showing Auto-generated CD Project No */}
+          {/* Header Banner showing Project No */}
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 rounded-xl border border-primary/20 bg-primary/5 p-4">
             <div className="flex items-center gap-3">
               <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary text-primary-foreground shadow-xs">
@@ -208,10 +283,10 @@ export function CreateTaskForm({
               </div>
               <div>
                 <p className="text-xs font-semibold tracking-wider text-primary uppercase">
-                  Auto-Generated CD Project No.
+                  Project No.
                 </p>
                 <p className="font-mono text-xl font-bold tracking-tight text-foreground">
-                  {cdProjectNo}
+                  {cdProjectNo || "Enter Project No below"}
                 </p>
               </div>
             </div>
@@ -235,7 +310,22 @@ export function CreateTaskForm({
           )}
 
           {/* Grid section 1: Project & Customer Specs */}
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+            {/* Project No (Manually Typed) */}
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="cd_project_no">Project No. *</Label>
+              <Input
+                id="cd_project_no"
+                name="cd_project_no"
+                placeholder="e.g. U01RN0001V1"
+                disabled={isPending}
+                value={cdProjectNo}
+                onChange={(e) => setCdProjectNo(e.target.value)}
+                className="font-mono font-semibold"
+                required
+              />
+            </div>
+
             {/* Customer Project No */}
             <div className="flex flex-col gap-1.5">
               <Label htmlFor="customer_project_no">Customer Project No.</Label>
@@ -249,20 +339,18 @@ export function CreateTaskForm({
               />
             </div>
 
-            {/* Request Date */}
+            {/* Request Date (DD-MM-YYYY) */}
             <div className="flex flex-col gap-1.5">
-              <Label htmlFor="request_date">Request Date *</Label>
-              <div className="relative">
-                <Input
-                  id="request_date"
-                  name="request_date"
-                  type="date"
-                  required
-                  disabled={isPending}
-                  value={requestDate}
-                  onChange={(e) => setRequestDate(e.target.value)}
-                />
-              </div>
+              <Label htmlFor="request_date">Request Date (DD-MM-YYYY) *</Label>
+              <Input
+                id="request_date"
+                name="request_date"
+                placeholder="DD-MM-YYYY"
+                required
+                disabled={isPending}
+                value={requestDate}
+                onChange={(e) => handleRequestDateChange(e.target.value)}
+              />
             </div>
           </div>
 
@@ -322,7 +410,7 @@ export function CreateTaskForm({
               <Label htmlFor="category_code">Category Name *</Label>
               <Select
                 value={categoryCode}
-                onValueChange={setCategoryCode}
+                onValueChange={handleCategoryChange}
                 disabled={isPending}
               >
                 <SelectTrigger id="category_code">
@@ -335,7 +423,7 @@ export function CreateTaskForm({
                         {cat.code}
                       </span>
                       {" - "}
-                      <span>{cat.label}</span>
+                      <span>{cat.label} ({CATEGORY_DEADLINE_HOURS[cat.code] ?? 24}h)</span>
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -411,7 +499,6 @@ export function CreateTaskForm({
             </div>
           </div>
 
-
           {/* Reference Image Upload Field */}
           <div className="flex flex-col gap-2">
             <Label htmlFor="reference_image">Reference Images</Label>
@@ -478,8 +565,9 @@ export function CreateTaskForm({
                 id="points"
                 name="points"
                 type="number"
+                step="any"
                 min={0}
-                placeholder="e.g. 10"
+                placeholder="e.g. 10.5"
                 disabled={isPending}
                 value={points}
                 onChange={(e) => setPoints(e.target.value)}
@@ -487,11 +575,11 @@ export function CreateTaskForm({
             </div>
 
             <div className="flex flex-col gap-1.5">
-              <Label htmlFor="deadline">Deadline</Label>
+              <Label htmlFor="deadline">Deadline (DD-MM-YYYY)</Label>
               <Input
                 id="deadline"
                 name="deadline"
-                type="date"
+                placeholder="DD-MM-YYYY"
                 disabled={isPending}
                 value={deadline}
                 onChange={(e) => setDeadline(e.target.value)}
@@ -543,7 +631,6 @@ export function CreateTaskForm({
             )}
           </div>
 
-
           <div className="flex flex-col gap-1.5">
             <Label>Assign to Designer</Label>
             <Select
@@ -574,3 +661,4 @@ export function CreateTaskForm({
     </Card>
   )
 }
+

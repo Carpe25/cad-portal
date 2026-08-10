@@ -23,6 +23,7 @@ import {
   STATUS_COLORS,
   PRIORITY_COLORS,
   SPEED_COLORS,
+  isTaskOverdue,
 } from "@/lib/task-utils"
 
 export type KanbanTask = {
@@ -366,11 +367,19 @@ function TaskCard({
           </div>
         )}
 
-        {/* Deadline */}
+        {/* Deadline & Overdue Badge */}
         {task.deadline && (
-          <div className="flex shrink-0 items-center gap-1 text-[11px]">
-            <Clock className="h-3 w-3" />
-            <span>{formatDeadline(task.deadline)}</span>
+          <div className="flex shrink-0 items-center gap-1.5 text-[11px]">
+            {isTaskOverdue(task.deadline, task.status) ? (
+              <Badge variant="destructive" className="bg-red-500/10 text-red-600 dark:text-red-400 border-red-500/30 text-[10px] px-1.5 py-0 font-semibold">
+                Overdue
+              </Badge>
+            ) : (
+              <>
+                <Clock className="h-3 w-3" />
+                <span>{formatDeadline(task.deadline)}</span>
+              </>
+            )}
           </div>
         )}
       </div>

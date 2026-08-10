@@ -10,6 +10,8 @@ import {
   STATUS_COLORS,
   PRIORITY_COLORS,
   labelBadgeClass,
+  isTaskOverdue,
+  isSubmissionLate,
 } from "@/lib/task-utils"
 import { ParsedTrelloCard } from "@/lib/trello-types"
 import { PageHeader } from "@/components/portal/page-header"
@@ -88,6 +90,7 @@ export default async function TaskDetailPage({
   const session = await getSession()
   if (!session) redirect("/login")
 
+  const cleanId = id.trim()
   const taskRows = await sql`
     SELECT
       t.*,
@@ -96,7 +99,9 @@ export default async function TaskDetailPage({
     FROM tasks t
     LEFT JOIN users u ON t.assigned_to = u.id
     LEFT JOIN users m ON t.created_by = m.id
-    WHERE t.id = ${id}
+    WHERE LOWER(t.id::text) = LOWER(${cleanId})
+       OR LOWER(t.readable_id) = LOWER(${cleanId})
+       OR t.id::text = REPLACE(${cleanId}, '-', '')
   `
 
   if (!taskRows.length) notFound()
@@ -111,7 +116,7 @@ export default async function TaskDetailPage({
     FROM submissions s
     LEFT JOIN users su ON s.submitted_by = su.id
     LEFT JOIN users ru ON s.reviewed_by = ru.id
-    WHERE s.task_id = ${id}
+    WHERE s.task_id::text = ${task.id}::text
     ORDER BY s.submitted_at ASC
   `) as Submission[]
 
@@ -258,14 +263,21 @@ export default async function TaskDetailPage({
                 </div>
                 <div>
                   <dt className="text-xs text-muted-foreground">Deadline</dt>
-                  <dd className="mt-0.5 font-medium">
-                    {task.deadline
-                      ? new Date(task.deadline).toLocaleDateString("en-IN", {
-                        day: "numeric",
-                        month: "long",
-                        year: "numeric",
-                      })
-                      : "—"}
+                  <dd className="mt-0.5 font-medium flex items-center gap-2">
+                    <span>
+                      {task.deadline
+                        ? new Date(task.deadline).toLocaleDateString("en-IN", {
+                          day: "numeric",
+                          month: "long",
+                          year: "numeric",
+                        })
+                        : "—"}
+                    </span>
+                    {isTaskOverdue(task.deadline, task.status) && (
+                      <Badge variant="destructive" className="bg-red-500/10 text-red-600 dark:text-red-400 border-red-500/30 text-[10px] px-1.5 py-0 font-semibold">
+                        Overdue
+                      </Badge>
+                    )}
                   </dd>
                 </div>
                 <div>
@@ -645,14 +657,21 @@ export default async function TaskDetailPage({
                               {OUTCOME_LABEL[outcomeKey] ?? outcomeKey}
                             </Badge>
                           </div>
-                        <p className="text-xs text-muted-foreground">
-                          {new Date(sub.submitted_at).toLocaleString("en-IN", {
-                            day: "numeric",
-                            month: "short",
-                            hour: "2-digit",
-                            minute: "2-digit",
-                          })}
-                        </p>
+                          <div className="flex items-center gap-2">
+                            {isSubmissionLate(sub.submitted_at, task.deadline) && (
+                              <Badge variant="destructive" className="bg-red-500/10 text-red-600 dark:text-red-400 border-red-500/30 text-[10px] px-1.5 py-0 font-semibold">
+                                Submitted Late
+                              </Badge>
+                            )}
+                            <p className="text-xs text-muted-foreground">
+                              {new Date(sub.submitted_at).toLocaleString("en-IN", {
+                                day: "numeric",
+                                month: "short",
+                                hour: "2-digit",
+                                minute: "2-digit",
+                              })}
+                            </p>
+                          </div>
                       </div>
                       <p className="mt-1 text-xs text-muted-foreground">
                         Submitted by {sub.submitter_name}
@@ -783,7 +802,7 @@ export default async function TaskDetailPage({
               )}
             </div>
 
-            {/* Task Discussion Panel */}
+            {/* Task Discussion Panel - CometChat */}
             <TaskCometChatPanel
               taskId={task.id}
               taskTitle={taskHeading}
@@ -793,6 +812,7 @@ export default async function TaskDetailPage({
                 email: session.email,
               }}
             />
+
           </div>
         </div>
       </div>
