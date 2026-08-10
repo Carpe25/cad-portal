@@ -80,23 +80,32 @@ export function TaskCometChatPanel({
         ? currentUser.id.replace(/[^a-zA-Z0-9_-]/g, "_")
         : `user_${Date.now()}`
 
-      // Check if user is logged in
-      let loggedInUser = CometChatUIKit.getLoggedInUser()
+      // Check if user is logged in (await is required for UI Kit v7 Promise return)
+      let loggedInUser = await CometChatUIKit.getLoggedInUser()
 
       if (!loggedInUser) {
         try {
           loggedInUser = await CometChatUIKit.login(sanitizedUserId)
         } catch (loginError: any) {
+          const errCode = loginError?.code || ""
+          const errMsg = String(loginError?.message || loginError?.devMessage || "")
           // If user doesn't exist, create user first via Core SDK
           if (
-            loginError?.code === "ERR_UID_NOT_FOUND" ||
-            loginError?.code === "ERR_ENTITY_DOES_NOT_EXISTS" ||
-            loginError?.message?.includes("not exist")
+            errCode === "ERR_UID_NOT_FOUND" ||
+            errCode === "ERR_ENTITY_DOES_NOT_EXISTS" ||
+            errMsg.toLowerCase().includes("not exist") ||
+            errMsg.toLowerCase().includes("uid not found") ||
+            errMsg.toLowerCase().includes("user not found")
           ) {
-            const newUser = new CometChat.User(sanitizedUserId)
-            newUser.setName(currentUser.name || currentUser.email || "Team Member")
-            await CometChat.createUser(newUser, authKey)
-            loggedInUser = await CometChatUIKit.login(sanitizedUserId)
+            try {
+              const newUser = new CometChat.User(sanitizedUserId)
+              newUser.setName(currentUser.name || currentUser.email || "Team Member")
+              await CometChat.createUser(newUser, authKey)
+              loggedInUser = await CometChatUIKit.login(sanitizedUserId)
+            } catch (createUserErr: any) {
+              console.warn("CometChat createUser notice:", createUserErr)
+              loggedInUser = await CometChatUIKit.login(sanitizedUserId)
+            }
           } else {
             throw loginError
           }
@@ -153,7 +162,7 @@ export function TaskCometChatPanel({
 
       setIsInitializing(false)
     } catch (err: any) {
-      console.error("CometChat Init Error:", err)
+      console.error("CometChat Init Error:", err?.message || err?.devMessage || err?.code || err)
       const errCode = err?.code || ""
       const errMsg = err?.message || err?.devMessage || ""
       if (
@@ -171,7 +180,7 @@ export function TaskCometChatPanel({
           console.error("Failed auto-joining group on retry:", retryErr)
         }
       }
-      setError(err?.message || "Failed to connect to discussion server")
+      setError(err?.message || err?.devMessage || err?.code || "Failed to connect to discussion server")
       setIsInitializing(false)
     }
   }
