@@ -20,7 +20,7 @@ import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
 import { sql } from "@/lib/db"
 import { getSession, type SessionUser } from "@/lib/session"
-import { PRIORITY_COLORS, SPEED_COLORS, STATUS_COLORS, STATUS_LABELS, isTaskOverdue } from "@/lib/task-utils"
+import { PRIORITY_COLORS, SPEED_COLORS, STATUS_COLORS, STATUS_LABELS, isTaskOverdue, formatDateDisplay } from "@/lib/task-utils"
 
 // --- Types ---
 type Task = {
@@ -80,11 +80,7 @@ function formatAge(createdAt: string): string {
 }
 
 function formatDeadline(deadline: string | null): string {
-  if (!deadline) return "—"
-  return new Date(deadline).toLocaleDateString("en-IN", {
-    day: "numeric",
-    month: "short",
-  })
+  return formatDateDisplay(deadline, { day: "numeric", month: "short" })
 }
 
 // --- Page ---

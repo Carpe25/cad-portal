@@ -12,6 +12,7 @@ import {
   labelBadgeClass,
   isTaskOverdue,
   isSubmissionLate,
+  formatDateDisplay,
 } from "@/lib/task-utils"
 import { ParsedTrelloCard } from "@/lib/trello-types"
 import { PageHeader } from "@/components/portal/page-header"
@@ -249,7 +250,7 @@ export default async function TaskDetailPage({
                   <div>
                     <dt className="text-xs text-muted-foreground">Request Date</dt>
                     <dd className="mt-0.5 font-medium">
-                      {new Date(task.request_date).toLocaleDateString("en-IN", {
+                      {formatDateDisplay(task.request_date, {
                         day: "numeric",
                         month: "short",
                         year: "numeric",
@@ -265,13 +266,11 @@ export default async function TaskDetailPage({
                   <dt className="text-xs text-muted-foreground">Deadline</dt>
                   <dd className="mt-0.5 font-medium flex items-center gap-2">
                     <span>
-                      {task.deadline
-                        ? new Date(task.deadline).toLocaleDateString("en-IN", {
-                          day: "numeric",
-                          month: "long",
-                          year: "numeric",
-                        })
-                        : "—"}
+                      {formatDateDisplay(task.deadline, {
+                        day: "numeric",
+                        month: "long",
+                        year: "numeric",
+                      })}
                     </span>
                     {isTaskOverdue(task.deadline, task.status) && (
                       <Badge variant="destructive" className="bg-red-500/10 text-red-600 dark:text-red-400 border-red-500/30 text-[10px] px-1.5 py-0 font-semibold">

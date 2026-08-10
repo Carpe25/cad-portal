@@ -24,6 +24,7 @@ import {
   PRIORITY_COLORS,
   SPEED_COLORS,
   isTaskOverdue,
+  formatDateDisplay,
 } from "@/lib/task-utils"
 
 export type KanbanTask = {
@@ -57,11 +58,7 @@ const STAGES = [
 ]
 
 function formatDeadline(deadline: string | null): string {
-  if (!deadline) return "—"
-  return new Date(deadline).toLocaleDateString("en-IN", {
-    day: "numeric",
-    month: "short",
-  })
+  return formatDateDisplay(deadline, { day: "numeric", month: "short" })
 }
 
 export function KanbanBoard({

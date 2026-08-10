@@ -105,3 +105,21 @@ export function isSubmissionLate(submittedAtStr: string | null | undefined, dead
   return submittedDate > deadlineDate
 }
 
+/**
+ * Safely formats any date string (DD-MM-YYYY, YYYY-MM-DD, or ISO) to locale string without throwing RangeError.
+ */
+export function formatDateDisplay(
+  dateStr: string | null | undefined,
+  options: Intl.DateTimeFormatOptions = { day: "numeric", month: "short", year: "numeric" }
+): string {
+  if (!dateStr) return "—"
+  const dateObj = parseDeadlineDate(dateStr)
+  if (!dateObj || isNaN(dateObj.getTime())) return String(dateStr)
+  try {
+    return dateObj.toLocaleDateString("en-IN", options)
+  } catch (e) {
+    return String(dateStr)
+  }
+}
+
+
