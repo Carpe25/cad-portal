@@ -6,7 +6,7 @@ import { sql } from "@/lib/db"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Skeleton } from "@/components/ui/skeleton"
-import { STATUS_LABELS, STATUS_COLORS, PRIORITY_COLORS, SPEED_COLORS, isTaskOverdue } from "@/lib/task-utils"
+import { STATUS_LABELS, STATUS_COLORS, PRIORITY_COLORS, SPEED_COLORS, isTaskOverdue, formatDateDisplay } from "@/lib/task-utils"
 import {
   ArrowRight,
   Clock,
@@ -350,11 +350,7 @@ const STATUS_DOT: Record<string, string> = {
 }
 
 function formatDeadline(deadline: string | null): string {
-  if (!deadline) return "—"
-  return new Date(deadline).toLocaleDateString("en-IN", {
-    day: "numeric",
-    month: "short",
-  })
+  return formatDateDisplay(deadline, { day: "numeric", month: "short" })
 }
 
 function DashboardContent({
