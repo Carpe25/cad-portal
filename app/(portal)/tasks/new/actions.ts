@@ -24,6 +24,22 @@ export async function ensureTaskTableColumns() {
     ADD COLUMN IF NOT EXISTS request_date DATE,
     ADD COLUMN IF NOT EXISTS reference_image TEXT;
   `
+  try {
+    await sql`ALTER TABLE tasks ALTER COLUMN points TYPE NUMERIC(10,2) USING points::numeric;`
+  } catch (err) {
+    // Column might already be numeric
+  }
+}
+
+function normalizeDateForDb(dateStr: string | null): string | null {
+  if (!dateStr) return null
+  const trimmed = dateStr.trim()
+  const parts = trimmed.split("-")
+  if (parts.length === 3 && parts[2].length === 4) {
+    // DD-MM-YYYY -> YYYY-MM-DD
+    return `${parts[2]}-${parts[1].padStart(2, "0")}-${parts[0].padStart(2, "0")}`
+  }
+  return trimmed
 }
 
 export type CreateTaskPayload = {
@@ -95,13 +111,13 @@ export async function createTaskAction(data: CreateTaskPayload | FormData) {
     version = (data.get("version") as string) || "V1"
     srNo = (data.get("sr_no") as string) || null
     cdProjectNo = (data.get("cd_project_no") as string) || null
-    requestDate = (data.get("request_date") as string) || null
+    requestDate = normalizeDateForDb((data.get("request_date") as string) || null)
     title = (data.get("title") as string) || customerProjectNo || cdProjectNo || "Untitled Task"
     styleRefNumber = (data.get("style_ref_number") as string) || null
     description = (data.get("description") as string) || null
     const pointsRaw = data.get("points") as string
-    points = pointsRaw ? parseInt(pointsRaw, 10) : 0
-    deadline = (data.get("deadline") as string) || null
+    points = pointsRaw ? parseFloat(pointsRaw) : 0
+    deadline = normalizeDateForDb((data.get("deadline") as string) || null)
     driveFolderLink = (data.get("drive_folder_link") as string) || null
     assignedTo = (data.get("assigned_to") as string) || null
     priority = speed === "U" ? "high" : "medium"
@@ -134,12 +150,12 @@ export async function createTaskAction(data: CreateTaskPayload | FormData) {
     version = data.version || "V1"
     srNo = data.sr_no || null
     cdProjectNo = data.cd_project_no || null
-    requestDate = data.request_date || null
+    requestDate = normalizeDateForDb(data.request_date || null)
     title = data.title || customerProjectNo || cdProjectNo || "Untitled Task"
     styleRefNumber = data.style_ref_number || null
     description = data.description || null
-    points = typeof data.points === "number" ? data.points : (data.points ? parseInt(String(data.points), 10) : 0)
-    deadline = data.deadline || null
+    points = typeof data.points === "number" ? data.points : (data.points ? parseFloat(String(data.points)) : 0)
+    deadline = normalizeDateForDb(data.deadline || null)
     driveFolderLink = data.drive_folder_link || null
     assignedTo = data.assigned_to || null
     priority = speed === "U" ? "high" : "medium"

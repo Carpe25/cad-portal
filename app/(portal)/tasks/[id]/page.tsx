@@ -10,6 +10,8 @@ import {
   STATUS_COLORS,
   PRIORITY_COLORS,
   labelBadgeClass,
+  isTaskOverdue,
+  isSubmissionLate,
 } from "@/lib/task-utils"
 import { ParsedTrelloCard } from "@/lib/trello-types"
 import { PageHeader } from "@/components/portal/page-header"
@@ -262,14 +264,21 @@ export default async function TaskDetailPage({
                 </div>
                 <div>
                   <dt className="text-xs text-muted-foreground">Deadline</dt>
-                  <dd className="mt-0.5 font-medium">
-                    {task.deadline
-                      ? new Date(task.deadline).toLocaleDateString("en-IN", {
-                        day: "numeric",
-                        month: "long",
-                        year: "numeric",
-                      })
-                      : "—"}
+                  <dd className="mt-0.5 font-medium flex items-center gap-2">
+                    <span>
+                      {task.deadline
+                        ? new Date(task.deadline).toLocaleDateString("en-IN", {
+                          day: "numeric",
+                          month: "long",
+                          year: "numeric",
+                        })
+                        : "—"}
+                    </span>
+                    {isTaskOverdue(task.deadline, task.status) && (
+                      <Badge variant="destructive" className="bg-red-500/10 text-red-600 dark:text-red-400 border-red-500/30 text-[10px] px-1.5 py-0 font-semibold">
+                        Overdue
+                      </Badge>
+                    )}
                   </dd>
                 </div>
                 <div>
@@ -649,14 +658,21 @@ export default async function TaskDetailPage({
                               {OUTCOME_LABEL[outcomeKey] ?? outcomeKey}
                             </Badge>
                           </div>
-                        <p className="text-xs text-muted-foreground">
-                          {new Date(sub.submitted_at).toLocaleString("en-IN", {
-                            day: "numeric",
-                            month: "short",
-                            hour: "2-digit",
-                            minute: "2-digit",
-                          })}
-                        </p>
+                          <div className="flex items-center gap-2">
+                            {isSubmissionLate(sub.submitted_at, task.deadline) && (
+                              <Badge variant="destructive" className="bg-red-500/10 text-red-600 dark:text-red-400 border-red-500/30 text-[10px] px-1.5 py-0 font-semibold">
+                                Submitted Late
+                              </Badge>
+                            )}
+                            <p className="text-xs text-muted-foreground">
+                              {new Date(sub.submitted_at).toLocaleString("en-IN", {
+                                day: "numeric",
+                                month: "short",
+                                hour: "2-digit",
+                                minute: "2-digit",
+                              })}
+                            </p>
+                          </div>
                       </div>
                       <p className="mt-1 text-xs text-muted-foreground">
                         Submitted by {sub.submitter_name}

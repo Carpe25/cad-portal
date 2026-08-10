@@ -53,3 +53,55 @@ export const LABEL_COLORS: Record<string, string> = {
 export function labelBadgeClass(color: string) {
   return LABEL_COLORS[color] ?? "bg-muted text-muted-foreground"
 }
+
+/**
+ * Safely parses any date string (YYYY-MM-DD, DD-MM-YYYY, or ISO string) into a Date object at 23:59:59.
+ */
+export function parseDeadlineDate(dateStr: string | null | undefined): Date | null {
+  if (!dateStr) return null
+  const trimmed = dateStr.trim()
+  const parts = trimmed.split("-")
+  if (parts.length === 3) {
+    if (parts[0].length === 4) {
+      // YYYY-MM-DD
+      return new Date(parseInt(parts[0], 10), parseInt(parts[1], 10) - 1, parseInt(parts[2], 10), 23, 59, 59)
+    } else if (parts[2].length === 4) {
+      // DD-MM-YYYY
+      return new Date(parseInt(parts[2], 10), parseInt(parts[1], 10) - 1, parseInt(parts[0], 10), 23, 59, 59)
+    }
+  }
+  const parsed = new Date(trimmed)
+  if (isNaN(parsed.getTime())) return null
+  // Set end of day if only date was provided
+  if (!trimmed.includes("T") && !trimmed.includes(":")) {
+    parsed.setHours(23, 59, 59, 999)
+  }
+  return parsed
+}
+
+/**
+ * Checks if an active task (assigned, in_progress, revision_requested) is past its deadline.
+ */
+export function isTaskOverdue(deadlineStr: string | null | undefined, status: string): boolean {
+  if (!deadlineStr) return false
+  const activeStatuses = ["assigned", "in_progress", "revision_requested"]
+  if (!activeStatuses.includes(status)) return false
+
+  const deadlineDate = parseDeadlineDate(deadlineStr)
+  if (!deadlineDate) return false
+
+  return new Date() > deadlineDate
+}
+
+/**
+ * Checks if a submission was made after the task deadline.
+ */
+export function isSubmissionLate(submittedAtStr: string | null | undefined, deadlineStr: string | null | undefined): boolean {
+  if (!submittedAtStr || !deadlineStr) return false
+  const submittedDate = new Date(submittedAtStr)
+  const deadlineDate = parseDeadlineDate(deadlineStr)
+  if (isNaN(submittedDate.getTime()) || !deadlineDate) return false
+
+  return submittedDate > deadlineDate
+}
+

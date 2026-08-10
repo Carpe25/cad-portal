@@ -20,7 +20,7 @@ import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
 import { sql } from "@/lib/db"
 import { getSession, type SessionUser } from "@/lib/session"
-import { PRIORITY_COLORS, SPEED_COLORS, STATUS_COLORS, STATUS_LABELS } from "@/lib/task-utils"
+import { PRIORITY_COLORS, SPEED_COLORS, STATUS_COLORS, STATUS_LABELS, isTaskOverdue } from "@/lib/task-utils"
 
 // --- Types ---
 type Task = {
@@ -474,8 +474,16 @@ function TaskRow({
           {task.deadline && (
             <>
               <span>·</span>
-              <Clock className="h-3 w-3" />
-              <span>{formatDeadline(task.deadline)}</span>
+              {isTaskOverdue(task.deadline, task.status) ? (
+                <Badge variant="destructive" className="bg-red-500/10 text-red-600 dark:text-red-400 border-red-500/30 text-[10px] px-1.5 py-0 font-semibold">
+                  Overdue
+                </Badge>
+              ) : (
+                <>
+                  <Clock className="h-3 w-3" />
+                  <span>{formatDeadline(task.deadline)}</span>
+                </>
+              )}
             </>
           )}
           {/* Mobile-only badges */}
