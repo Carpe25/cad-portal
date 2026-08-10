@@ -17,7 +17,6 @@ import { ParsedTrelloCard } from "@/lib/trello-types"
 import { PageHeader } from "@/components/portal/page-header"
 import { FolderPathLink } from "@/components/folder-path-link"
 import { TaskCometChatPanel } from "@/components/portal/task-cometchat-wrapper"
-import { TaskPartyKitPanel } from "@/components/portal/task-partykit-panel"
 
 type Task = {
   id: string
@@ -803,22 +802,8 @@ export default async function TaskDetailPage({
               )}
             </div>
 
-            {/* Task Discussion Panel */}
-            {/* 
-              CometChat Panel (Commented out - uncomment below to switch back to CometChat):
-              <TaskCometChatPanel
-                taskId={task.id}
-                taskTitle={taskHeading}
-                currentUser={{
-                  id: session.id,
-                  name: session.name,
-                  email: session.email,
-                }}
-              />
-            */}
-
-            {/* PartyKit + Shadcn Live Discussion Panel */}
-            <TaskPartyKitPanel
+            {/* Task Discussion Panel - CometChat */}
+            <TaskCometChatPanel
               taskId={task.id}
               taskTitle={taskHeading}
               currentUser={{
