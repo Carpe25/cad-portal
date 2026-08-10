@@ -286,7 +286,7 @@ export default async function TaskDetailPage({
                 <div>
                   <dt className="text-xs text-muted-foreground">Created on</dt>
                   <dd className="mt-0.5">
-                    {new Date(task.created_at).toLocaleDateString("en-IN", {
+                    {formatDateDisplay(task.created_at, {
                       day: "numeric",
                       month: "short",
                       year: "numeric",

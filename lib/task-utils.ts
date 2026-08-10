@@ -55,12 +55,18 @@ export function labelBadgeClass(color: string) {
 }
 
 /**
- * Safely parses any date string (YYYY-MM-DD, DD-MM-YYYY, or ISO string) into a Date object at 23:59:59.
+ * Safely parses any date input (YYYY-MM-DD, DD-MM-YYYY, ISO string, or Date object) into a Date object at 23:59:59.
  */
-export function parseDeadlineDate(dateStr: string | null | undefined): Date | null {
-  if (!dateStr) return null
-  const trimmed = dateStr.trim()
-  const parts = trimmed.split("-")
+export function parseDeadlineDate(dateInput: any): Date | null {
+  if (!dateInput) return null
+  if (dateInput instanceof Date) {
+    if (isNaN(dateInput.getTime())) return null
+    return dateInput
+  }
+  const dateStr = String(dateInput).trim()
+  if (!dateStr || dateStr === "null" || dateStr === "undefined") return null
+
+  const parts = dateStr.split("-")
   if (parts.length === 3) {
     if (parts[0].length === 4) {
       // YYYY-MM-DD
@@ -70,10 +76,10 @@ export function parseDeadlineDate(dateStr: string | null | undefined): Date | nu
       return new Date(parseInt(parts[2], 10), parseInt(parts[1], 10) - 1, parseInt(parts[0], 10), 23, 59, 59)
     }
   }
-  const parsed = new Date(trimmed)
+  const parsed = new Date(dateStr)
   if (isNaN(parsed.getTime())) return null
   // Set end of day if only date was provided
-  if (!trimmed.includes("T") && !trimmed.includes(":")) {
+  if (!dateStr.includes("T") && !dateStr.includes(":")) {
     parsed.setHours(23, 59, 59, 999)
   }
   return parsed
@@ -82,12 +88,12 @@ export function parseDeadlineDate(dateStr: string | null | undefined): Date | nu
 /**
  * Checks if an active task (assigned, in_progress, revision_requested) is past its deadline.
  */
-export function isTaskOverdue(deadlineStr: string | null | undefined, status: string): boolean {
-  if (!deadlineStr) return false
+export function isTaskOverdue(deadlineInput: any, status: string): boolean {
+  if (!deadlineInput) return false
   const activeStatuses = ["assigned", "in_progress", "revision_requested"]
   if (!activeStatuses.includes(status)) return false
 
-  const deadlineDate = parseDeadlineDate(deadlineStr)
+  const deadlineDate = parseDeadlineDate(deadlineInput)
   if (!deadlineDate) return false
 
   return new Date() > deadlineDate
@@ -96,30 +102,31 @@ export function isTaskOverdue(deadlineStr: string | null | undefined, status: st
 /**
  * Checks if a submission was made after the task deadline.
  */
-export function isSubmissionLate(submittedAtStr: string | null | undefined, deadlineStr: string | null | undefined): boolean {
-  if (!submittedAtStr || !deadlineStr) return false
-  const submittedDate = new Date(submittedAtStr)
-  const deadlineDate = parseDeadlineDate(deadlineStr)
-  if (isNaN(submittedDate.getTime()) || !deadlineDate) return false
+export function isSubmissionLate(submittedAtInput: any, deadlineInput: any): boolean {
+  if (!submittedAtInput || !deadlineInput) return false
+  const submittedDate = parseDeadlineDate(submittedAtInput)
+  const deadlineDate = parseDeadlineDate(deadlineInput)
+  if (!submittedDate || !deadlineDate) return false
 
   return submittedDate > deadlineDate
 }
 
 /**
- * Safely formats any date string (DD-MM-YYYY, YYYY-MM-DD, or ISO) to locale string without throwing RangeError.
+ * Safely formats any date input (DD-MM-YYYY, YYYY-MM-DD, ISO, or Date object) to locale string without throwing RangeError.
  */
 export function formatDateDisplay(
-  dateStr: string | null | undefined,
+  dateInput: any,
   options: Intl.DateTimeFormatOptions = { day: "numeric", month: "short", year: "numeric" }
 ): string {
-  if (!dateStr) return "—"
-  const dateObj = parseDeadlineDate(dateStr)
-  if (!dateObj || isNaN(dateObj.getTime())) return String(dateStr)
+  if (!dateInput) return "—"
+  const dateObj = parseDeadlineDate(dateInput)
+  if (!dateObj || isNaN(dateObj.getTime())) return String(dateInput)
   try {
     return dateObj.toLocaleDateString("en-IN", options)
   } catch (e) {
-    return String(dateStr)
+    return String(dateInput)
   }
 }
+
 
 
