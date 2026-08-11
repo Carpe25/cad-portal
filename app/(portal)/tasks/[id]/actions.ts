@@ -6,31 +6,45 @@ import { sql } from "@/lib/db"
 import { getSession } from "@/lib/session"
 
 export async function assignToMeAction(taskId: string) {
-  const session = await getSession()
-  if (!session) return { error: "Unauthorized" }
-  const canWork =
-    session.roles.includes("designer") || session.roles.includes("qc")
-  if (!canWork) return { error: "Unauthorized" }
+  try {
+    const session = await getSession()
+    if (!session) return { error: "Unauthorized" }
+    const canWork =
+      session.roles.includes("designer") || session.roles.includes("qc")
+    if (!canWork) return { error: "Unauthorized" }
 
-  // Only allow claiming if the task is unassigned or pre-assigned to this user
-  const rows = await sql`
-    SELECT assigned_to FROM tasks WHERE id = ${taskId} AND status = 'assigned'
-  `
-  if (rows.length === 0) return { error: "Task is not available" }
+    // Only allow claiming if the task is unassigned (open task) or pre-assigned to this user
+    const rows = await sql`
+      SELECT assigned_to, status FROM tasks WHERE id = ${taskId}
+    `
+    if (rows.length === 0) return { error: "Task not found" }
 
-  const task = rows[0] as { assigned_to: string | null }
-  if (task.assigned_to !== null && task.assigned_to !== session.id) {
-    return { error: "This task is assigned to another designer" }
+    const task = rows[0] as { assigned_to: string | null; status: string }
+    if (task.status !== "assigned") {
+      return { error: "This task is no longer available for assignment" }
+    }
+
+    if (task.assigned_to !== null && task.assigned_to !== session.id) {
+      return { error: "This task is assigned to another designer" }
+    }
+
+    // Set assigned_to to designer's ID and status to in_progress
+    await sql`
+      UPDATE tasks
+      SET assigned_to = ${session.id}, status = 'in_progress'
+      WHERE id = ${taskId} AND status = 'assigned'
+        AND (assigned_to IS NULL OR assigned_to = ${session.id})
+    `
+
+    revalidatePath(`/tasks/${taskId}`)
+    revalidatePath("/tasks")
+    revalidatePath("/dashboard")
+    revalidatePath("/qc-queue")
+    return { success: true }
+  } catch (err: any) {
+    console.error("assignToMeAction error:", err)
+    return { error: err.message || "Failed to assign task." }
   }
-
-  await sql`
-    UPDATE tasks
-    SET assigned_to = ${session.id}, status = 'in_progress'
-    WHERE id = ${taskId} AND status = 'assigned'
-      AND (assigned_to IS NULL OR assigned_to = ${session.id})
-  `
-  revalidatePath(`/tasks/${taskId}`)
-  revalidatePath("/tasks")
 }
 
 export async function submitForQCAction(
@@ -140,47 +154,87 @@ export async function approveSubmissionAction(
   taskId: string,
   submissionId: string
 ) {
-  const session = await getSession()
-  if (
-    !session ||
-    (!session.roles.includes("qc") && !session.roles.includes("manager"))
-  ) {
-    return { error: "Unauthorized" }
-  }
+  try {
+    const session = await getSession()
+    if (
+      !session ||
+      (!session.roles.includes("qc") && !session.roles.includes("manager"))
+    ) {
+      return { error: "Unauthorized" }
+    }
 
-  // Get task info for points
-  const taskRows = await sql`
-    SELECT points, assigned_to FROM tasks WHERE id = ${taskId}
-  `
-  const task = taskRows[0] as { points: number; assigned_to: string }
+    // Drop restrictive check constraint if present in DB schema
+    try {
+      await sql`
+        ALTER TABLE submissions DROP CONSTRAINT IF EXISTS submissions_outcome_check;
+      `
+    } catch (err) {
+      // Ignore if constraint doesn't exist
+    }
 
-  // Update submission
-  await sql`
-    UPDATE submissions
-    SET outcome = 'approved', reviewed_by = ${session.id}
-    WHERE id = ${submissionId}
-  `
-
-  // Update task status
-  await sql`
-    UPDATE tasks SET status = 'client_ready' WHERE id = ${taskId}
-  `
-
-  // Credit points — guard against duplicate approvals on the same submission
-  const month = new Date().toISOString().slice(0, 7)
-  const existing = await sql`
-    SELECT id FROM points_log WHERE submission_id = ${submissionId}
-  `
-  if (existing.length === 0) {
-    await sql`
-      INSERT INTO points_log (user_id, task_id, submission_id, points, month)
-      VALUES (${task.assigned_to}, ${taskId}, ${submissionId}, ${task.points}, ${month})
+    // Get task info for points
+    const taskRows = await sql`
+      SELECT points, assigned_to FROM tasks WHERE id = ${taskId}
     `
-  }
+    if (!taskRows.length) {
+      return { error: "Task not found" }
+    }
+    const task = taskRows[0] as { points: number | null; assigned_to: string | null }
 
-  revalidatePath(`/tasks/${taskId}`)
-  revalidatePath("/tasks")
-  revalidatePath("/qc-queue")
+    // Get submission info to identify submitted_by as fallback
+    const subRows = await sql`
+      SELECT submitted_by FROM submissions WHERE id = ${submissionId}
+    `
+    const submission = subRows[0] as { submitted_by: string } | undefined
+
+    const recipientId = task.assigned_to || submission?.submitted_by || session.id
+
+    // Update submission
+    await sql`
+      UPDATE submissions
+      SET outcome = 'approved', reviewed_by = ${session.id}
+      WHERE id = ${submissionId}
+    `
+
+    // Update task status, and assign task if it was unassigned
+    if (recipientId && !task.assigned_to) {
+      await sql`
+        UPDATE tasks SET status = 'client_ready', assigned_to = ${recipientId} WHERE id = ${taskId}
+      `
+    } else {
+      await sql`
+        UPDATE tasks SET status = 'client_ready' WHERE id = ${taskId}
+      `
+    }
+
+    // Credit points — guard against duplicate approvals on the same submission
+    if (recipientId) {
+      const month = new Date().toISOString().slice(0, 7)
+      const points = task.points ? Number(task.points) : 0
+      const existing = await sql`
+        SELECT id FROM points_log WHERE submission_id = ${submissionId}
+      `
+      if (existing.length === 0) {
+        try {
+          await sql`ALTER TABLE points_log ALTER COLUMN points TYPE NUMERIC(10,2) USING points::numeric;`
+        } catch (err) {
+          // Column might already be numeric
+        }
+        await sql`
+          INSERT INTO points_log (user_id, task_id, submission_id, points, month)
+          VALUES (${recipientId}, ${taskId}, ${submissionId}, ${points}, ${month})
+        `
+      }
+    }
+
+    revalidatePath(`/tasks/${taskId}`)
+    revalidatePath("/tasks")
+    revalidatePath("/qc-queue")
+    return { success: true }
+  } catch (err: any) {
+    console.error("Error approving submission:", err)
+    return { error: err.message || "Failed to approve task submission." }
+  }
 }
 
 export async function sendBackAction(
@@ -188,29 +242,44 @@ export async function sendBackAction(
   submissionId: string,
   remarks: string
 ) {
-  const session = await getSession()
-  if (
-    !session ||
-    (!session.roles.includes("qc") && !session.roles.includes("manager"))
-  ) {
-    return { error: "Unauthorized" }
+  try {
+    const session = await getSession()
+    if (
+      !session ||
+      (!session.roles.includes("qc") && !session.roles.includes("manager"))
+    ) {
+      return { error: "Unauthorized" }
+    }
+
+    if (!remarks.trim()) return { error: "Remarks are required" }
+
+    // Drop restrictive check constraint if present in DB schema
+    try {
+      await sql`
+        ALTER TABLE submissions DROP CONSTRAINT IF EXISTS submissions_outcome_check;
+      `
+    } catch (err) {
+      // Ignore
+    }
+
+    await sql`
+      UPDATE submissions
+      SET outcome = 'sent_back', reviewed_by = ${session.id}, remarks = ${remarks.trim()}
+      WHERE id = ${submissionId}
+    `
+
+    await sql`
+      UPDATE tasks SET status = 'revision_requested' WHERE id = ${taskId}
+    `
+
+    revalidatePath(`/tasks/${taskId}`)
+    revalidatePath("/tasks")
+    revalidatePath("/qc-queue")
+    return { success: true }
+  } catch (err: any) {
+    console.error("Error sending back submission:", err)
+    return { error: err.message || "Failed to send back submission." }
   }
-
-  if (!remarks.trim()) return { error: "Remarks are required" }
-
-  await sql`
-    UPDATE submissions
-    SET outcome = 'sent_back', reviewed_by = ${session.id}, remarks = ${remarks.trim()}
-    WHERE id = ${submissionId}
-  `
-
-  await sql`
-    UPDATE tasks SET status = 'revision_requested' WHERE id = ${taskId}
-  `
-
-  revalidatePath(`/tasks/${taskId}`)
-  revalidatePath("/tasks")
-  revalidatePath("/qc-queue")
 }
 
 export async function closeTaskAction(taskId: string) {

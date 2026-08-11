@@ -72,8 +72,13 @@ export function TaskActions({
   function run(fn: () => Promise<{ error?: string } | void | undefined>) {
     setError(null)
     startTransition(async () => {
-      const result = await fn()
-      if (result && "error" in result && result.error) setError(result.error)
+      try {
+        const result = await fn()
+        if (result && "error" in result && result.error) setError(result.error)
+      } catch (err: any) {
+        console.error("Task action error:", err)
+        setError(err.message || "An unexpected error occurred.")
+      }
     })
   }
 

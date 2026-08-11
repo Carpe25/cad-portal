@@ -29,6 +29,11 @@ export async function ensureTaskTableColumns() {
   } catch (err) {
     // Column might already be numeric
   }
+  try {
+    await sql`ALTER TABLE points_log ALTER COLUMN points TYPE NUMERIC(10,2) USING points::numeric;`
+  } catch (err) {
+    // Column might already be numeric
+  }
 }
 
 function normalizeDateForDb(dateStr: string | null): string | null {
