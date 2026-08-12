@@ -8,7 +8,7 @@ import fs from "fs"
 import path from "path"
 
 import { compressImage } from "@/lib/image-compress"
-import { uploadToReferenceStorage } from "@/lib/linode-storage"
+import { uploadToReferenceStorage, createTaskFolderInStorage } from "@/lib/linode-storage"
 
 export async function ensureTaskTableColumns() {
   await sql`
@@ -162,24 +162,6 @@ export async function createTaskAction(data: CreateTaskPayload | FormData) {
     driveFolderLink = (data.get("drive_folder_link") as string) || null
     assignedTo = (data.get("assigned_to") as string) || null
     priority = speed === "U" ? "high" : "medium"
-
-    const imageFiles = data.getAll("reference_image") as File[]
-    for (let i = 0; i < imageFiles.length; i++) {
-      const imageFile = imageFiles[i]
-      if (imageFile && imageFile.size > 0) {
-        try {
-          const bytes = await imageFile.arrayBuffer()
-          const inputBuffer = Buffer.from(bytes)
-          const { compressedBuffer, ext } = await compressImage(inputBuffer, imageFile.name)
-
-          const safeFilename = `${Date.now()}_${i}_img${ext}`
-          const storedUrl = await uploadToReferenceStorage(compressedBuffer, safeFilename, ext)
-          referenceUrls.push(storedUrl)
-        } catch (uploadErr) {
-          console.error("Error saving reference image file:", uploadErr)
-        }
-      }
-    }
   } else {
     customerProjectNo = data.customer_project_no || null
     speed = data.speed || null
@@ -201,67 +183,15 @@ export async function createTaskAction(data: CreateTaskPayload | FormData) {
     driveFolderLink = data.drive_folder_link || null
     assignedTo = data.assigned_to || null
     priority = speed === "U" ? "high" : "medium"
-
-    const base64List = data.referenceImageBase64s || (data.referenceImageBase64 ? [data.referenceImageBase64] : [])
-    for (let i = 0; i < base64List.length; i++) {
-      const b64 = base64List[i]
-      if (b64) {
-        try {
-          const base64Data = b64.replace(/^data:image\/\w+;base64,/, "")
-          const inputBuffer = Buffer.from(base64Data, "base64")
-          const { compressedBuffer, ext } = await compressImage(inputBuffer)
-
-          const safeFilename = `${Date.now()}_${i}_img${ext}`
-          const storedUrl = await uploadToReferenceStorage(compressedBuffer, safeFilename, ext)
-          referenceUrls.push(storedUrl)
-        } catch (uploadErr) {
-          console.error("Error saving base64 reference image:", uploadErr)
-        }
-      }
-    }
-  }
-
-  if (referenceUrls.length > 0) {
-    referenceImageUrl = JSON.stringify(referenceUrls)
   }
 
   if (!clientName) {
     return { error: "Customer name is required" }
   }
 
-  // Ensure Google Drive folder link is created automatically if not provided
-  if (!driveFolderLink || !driveFolderLink.trim()) {
-    try {
-      const { createGoogleDriveFolder } = await import("@/lib/drive")
-      const formattedReqDate = formatDateForFolderName(requestDate)
-      const folderParts = [
-        cdProjectNo ? cdProjectNo.trim() : null,
-        customerProjectNo ? customerProjectNo.trim() : null,
-        version ? version.trim() : null,
-        formattedReqDate,
-      ].filter(Boolean)
-
-      const autoFolderName = folderParts.join("_") || title || `Task_${Date.now()}`
-      const driveRes = await createGoogleDriveFolder(autoFolderName)
-      if (driveRes.folderUrl) {
-        driveFolderLink = driveRes.folderUrl
-      }
-    } catch (driveErr: any) {
-      console.error("Auto Google Drive folder creation error:", driveErr)
-      return {
-        error: `Failed to auto-create Google Drive folder: ${
-          driveErr.message || "Google Drive connection error"
-        }`,
-      }
-    }
-  }
-
-  if (!driveFolderLink || !driveFolderLink.trim()) {
-    return { error: "Google Drive folder connection is compulsory for creating a task." }
-  }
-
   const assignedAtValue = assignedTo ? new Date().toISOString() : null
 
+  // 1. Insert task record to obtain taskId
   const rows = await sql`
     INSERT INTO tasks (
       title, client_name, style_ref_number, description, points,
@@ -273,12 +203,62 @@ export async function createTaskAction(data: CreateTaskPayload | FormData) {
       ${points}, ${priority}, ${deadline}, ${driveFolderLink},
       ${assignedTo}, ${assignedAtValue}, ${session.id}, 'assigned',
       ${customerProjectNo}, ${speed}, ${customerCode}, ${categoryCode}, ${complexity},
-      ${workType}, ${version}, ${srNo}, ${cdProjectNo}, ${requestDate}, ${referenceImageUrl}
+      ${workType}, ${version}, ${srNo}, ${cdProjectNo}, ${requestDate}, NULL
     )
     RETURNING id
   `
 
   const taskId = (rows[0] as { id: string }).id
+
+  // 2. Initialize task folder in Linode Object Storage
+  await createTaskFolderInStorage(taskId, title)
+
+  // 3. Upload reference images to Linode Object Storage under tasks/${taskId}/reference/
+  if (data instanceof FormData) {
+    const imageFiles = data.getAll("reference_image") as File[]
+    for (let i = 0; i < imageFiles.length; i++) {
+      const imageFile = imageFiles[i]
+      if (imageFile && imageFile.size > 0) {
+        try {
+          const bytes = await imageFile.arrayBuffer()
+          const inputBuffer = Buffer.from(bytes)
+          const { compressedBuffer, ext } = await compressImage(inputBuffer, imageFile.name)
+
+          const safeFilename = `${Date.now()}_${i}_img${ext}`
+          const storedUrl = await uploadToReferenceStorage(compressedBuffer, safeFilename, ext, taskId)
+          referenceUrls.push(storedUrl)
+        } catch (uploadErr) {
+          console.error("Error saving reference image file:", uploadErr)
+        }
+      }
+    }
+  } else {
+    const base64List = data.referenceImageBase64s || (data.referenceImageBase64 ? [data.referenceImageBase64] : [])
+    for (let i = 0; i < base64List.length; i++) {
+      const b64 = base64List[i]
+      if (b64) {
+        try {
+          const base64Data = b64.replace(/^data:image\/\w+;base64,/, "")
+          const inputBuffer = Buffer.from(base64Data, "base64")
+          const { compressedBuffer, ext } = await compressImage(inputBuffer)
+
+          const safeFilename = `${Date.now()}_${i}_img${ext}`
+          const storedUrl = await uploadToReferenceStorage(compressedBuffer, safeFilename, ext, taskId)
+          referenceUrls.push(storedUrl)
+        } catch (uploadErr) {
+          console.error("Error saving base64 reference image:", uploadErr)
+        }
+      }
+    }
+  }
+
+  if (referenceUrls.length > 0) {
+    referenceImageUrl = JSON.stringify(referenceUrls)
+    await sql`
+      UPDATE tasks SET reference_image = ${referenceImageUrl} WHERE id = ${taskId}
+    `
+  }
+
   redirect(`/tasks/${taskId}`)
 }
 

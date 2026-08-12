@@ -103,79 +103,159 @@ export function TaskActions({
     startTransition(async () => {
       try {
         if (validFiles.length > 0) {
-          const CHUNK_SIZE = 2 * 1024 * 1024 // 2 MB chunks (compliant with Google Drive's 256 KB multiple)
+          let lastUploadedUrl = ""
+          let lastVersion = ""
+          let usedPresigned = false
 
           for (let i = 0; i < validFiles.length; i++) {
             const file = validFiles[i]
-            const relPath = file.webkitRelativePath || file.name
-
             setUploadStatus(
-              `Initiating upload session for file ${i + 1} of ${validFiles.length}: ${file.name}...`
+              `Preparing upload ${i + 1}/${validFiles.length}: ${file.name}...`
             )
 
-            // 1. Initiate Resumable Upload Session
-            const initRes = await fetch(`/api/tasks/${task.id}/upload`, {
-              method: "POST",
-              headers: {
-                "Content-Type": "application/json",
-                "x-action": "init-session",
-              },
-              body: JSON.stringify({
-                fileName: file.name,
-                relativePath: relPath,
-                mimeType: file.type || "application/octet-stream",
-                fileSize: file.size,
-              }),
-            })
+            // Step 1: Request presigned upload URL from server
+            const presignedRes = await fetch(
+              `/api/tasks/${task.id}/upload/presigned-url`,
+              {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                  filename: file.name,
+                  fileSize: file.size,
+                  contentType: file.type || "application/octet-stream",
+                }),
+              }
+            )
 
-            const initData = await initRes.json()
-            if (!initRes.ok || initData.error || !initData.uploadUrl) {
-              setError(initData.error || `Failed to initiate upload session for: ${file.name}`)
+            const presignedData = await presignedRes.json()
+            if (!presignedRes.ok || presignedData.error) {
+              setError(
+                presignedData.error ||
+                  `Failed to generate upload URL for: ${file.name}`
+              )
               setUploadStatus(null)
               return
             }
 
-            const uploadUrl = initData.uploadUrl
-            const totalChunks = Math.ceil(file.size / CHUNK_SIZE) || 1
+            const { presignedUrl, fileUrl, version, isFallback } = presignedData
+            lastUploadedUrl = fileUrl
+            lastVersion = version
 
-            // 2. Upload File in 2MB Chunks
-            for (let c = 0; c < totalChunks; c++) {
-              const start = c * CHUNK_SIZE
-              const end = Math.min(start + CHUNK_SIZE, file.size)
-              const chunkBlob = file.slice(start, end)
-              const rangeEnd = Math.max(0, end - 1)
-              const isLastChunkOfLastFile =
-                i === validFiles.length - 1 && c === totalChunks - 1
+            // Step 2: Upload file directly to Linode Object Storage or fallback
+            if (presignedUrl && !isFallback) {
+              usedPresigned = true
+              await new Promise<void>((resolve, reject) => {
+                const xhr = new XMLHttpRequest()
+                xhr.open("PUT", presignedUrl, true)
+                xhr.setRequestHeader(
+                  "Content-Type",
+                  file.type || "application/octet-stream"
+                )
 
-              const percent = Math.round((end / (file.size || 1)) * 100)
-              setUploadStatus(
-                `Uploading file ${i + 1}/${validFiles.length}: ${file.name} (${percent}%)...`
-              )
+                xhr.upload.onprogress = (event) => {
+                  if (event.lengthComputable) {
+                    const percent = Math.round(
+                      (event.loaded / event.total) * 100
+                    )
+                    setUploadStatus(
+                      `Uploading file ${i + 1}/${validFiles.length}: ${file.name} (${percent}%)...`
+                    )
+                  }
+                }
 
-              const chunkRes = await fetch(`/api/tasks/${task.id}/upload`, {
-                method: "POST",
-                headers: {
-                  "Content-Type": "application/octet-stream",
-                  "x-action": "upload-chunk",
-                  "x-upload-url": encodeURIComponent(uploadUrl),
-                  "x-range-start": String(start),
-                  "x-range-end": String(rangeEnd),
-                  "x-total-size": String(file.size),
-                  "x-is-last": isLastChunkOfLastFile ? "true" : "false",
-                },
-                body: chunkBlob,
+                xhr.onload = () => {
+                  if (xhr.status >= 200 && xhr.status < 300) {
+                    resolve()
+                  } else {
+                    reject(
+                      new Error(
+                        `Storage upload failed with HTTP status ${xhr.status}. Please check CORS settings on Linode Object Storage.`
+                      )
+                    )
+                  }
+                }
+
+                xhr.onerror = () =>
+                  reject(
+                    new Error(
+                      "Network error during direct file upload to Object Storage."
+                    )
+                  )
+                xhr.send(file)
               })
+            } else {
+              // Dev Fallback mode if Linode env variables are missing
+              const CHUNK_SIZE = 4 * 1024 * 1024
+              const totalChunks = Math.ceil(file.size / CHUNK_SIZE) || 1
+              const isLastFile = i === validFiles.length - 1
 
-              const chunkData = await chunkRes.json()
-              if (!chunkRes.ok || chunkData.error) {
-                setError(chunkData.error || `Failed to upload chunk for file: ${file.name}`)
-                setUploadStatus(null)
-                return
+              for (let c = 0; c < totalChunks; c++) {
+                const start = c * CHUNK_SIZE
+                const end = Math.min(start + CHUNK_SIZE, file.size)
+                const chunkBlob = file.slice(start, end)
+                const isLastChunk = c === totalChunks - 1
+
+                const percent = Math.round(((c + 1) / totalChunks) * 100)
+                setUploadStatus(
+                  `Uploading file ${i + 1}/${validFiles.length}: ${file.name} (${percent}%)...`
+                )
+
+                const res = await fetch(`/api/tasks/${task.id}/upload`, {
+                  method: "POST",
+                  headers: {
+                    "Content-Type": "application/octet-stream",
+                    "x-file-name": encodeURIComponent(file.name),
+                    "x-file-size": String(file.size),
+                    "x-file-type": encodeURIComponent(
+                      file.type || "application/octet-stream"
+                    ),
+                    "x-chunk-index": String(c),
+                    "x-total-chunks": String(totalChunks),
+                    "x-is-last-chunk": isLastChunk ? "true" : "false",
+                    "x-is-last-file": isLastFile ? "true" : "false",
+                  },
+                  body: chunkBlob,
+                })
+
+                const data = await res.json()
+                if (!res.ok || data.error) {
+                  setError(
+                    data.error || `Failed to upload file: ${file.name}`
+                  )
+                  setUploadStatus(null)
+                  return
+                }
               }
             }
           }
 
+          // Step 3: Complete submission in DB if presigned upload was used
+          if (usedPresigned && lastUploadedUrl) {
+            setUploadStatus("Finalizing submission...")
+            const completeRes = await fetch(
+              `/api/tasks/${task.id}/upload/complete`,
+              {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                  fileUrl: lastUploadedUrl,
+                  version: lastVersion,
+                }),
+              }
+            )
+
+            const completeData = await completeRes.json()
+            if (!completeRes.ok || completeData.error) {
+              setError(
+                completeData.error || "Failed to finalize task submission record."
+              )
+              setUploadStatus(null)
+              return
+            }
+          }
+
           setUploadStatus("Upload complete!")
+          setSelectedFiles([])
           router.refresh()
         } else {
           const res = await submitForQCAction(task.id, driveLink)
@@ -188,8 +268,6 @@ export function TaskActions({
     })
   }
 
-
-  // No actions to show
   if (
     !isManager &&
     !isQC &&
@@ -199,132 +277,121 @@ export function TaskActions({
     return null
 
   return (
-    <div className="rounded-xl border border-border bg-card p-4">
-      <h2 className="mb-3 text-xs font-medium tracking-wide text-muted-foreground uppercase">
-        Actions
-      </h2>
+    <div className="flex flex-col gap-4 rounded-xl border border-border bg-card p-5 shadow-xs">
+      <div className="flex items-center justify-between">
+        <h2 className="text-xs font-semibold tracking-wider text-muted-foreground uppercase">
+          Task Actions
+        </h2>
+        {uploadStatus && (
+          <span className="text-xs font-medium text-primary animate-pulse">
+            {uploadStatus}
+          </span>
+        )}
+      </div>
+
+      {error && (
+        <div className="rounded-lg bg-destructive/10 p-3 text-xs text-destructive">
+          {error}
+        </div>
+      )}
 
       <div className="flex flex-col gap-3">
         {/* Designer/QC: Assign to me */}
         {task.status === "assigned" &&
           (isAssignedDesigner || (canWork && isUnassignedTask)) && (
             <div>
-              <p className="mb-2 text-sm text-muted-foreground">
+              <p className="mb-2 text-xs text-muted-foreground">
                 This task is waiting for you to accept it.
               </p>
               <Button
                 onClick={() => run(() => assignToMeAction(task.id))}
                 disabled={isPending}
+                className="w-full bg-emerald-600 hover:bg-emerald-700 text-white"
               >
                 {isPending ? "Assigning…" : "Assign to Me & Start"}
               </Button>
             </div>
           )}
 
-        {/* Designer: Submit for QC */}
         {task.status === "in_progress" && isAssignedDesigner && (
           <div className="flex flex-col gap-3">
-            {task.drive_folder_link ? (
-              <div className="flex flex-col gap-3 rounded-lg border border-primary/20 bg-primary/5 p-3.5">
-                <div>
-                  <p className="text-xs font-semibold text-primary uppercase tracking-wide">
-                    Google Drive Folder Connected
-                  </p>
-                  <p className="text-xs text-muted-foreground mt-0.5">
-                    Select your CAD folder or files to upload directly into the task's Google Drive folder.
-                  </p>
-                </div>
-
-                <div className="flex flex-col gap-2">
-                  <label
-                    htmlFor="cad_files_upload"
-                    className="flex cursor-pointer flex-col items-center justify-center rounded-lg border-2 border-dashed border-primary/30 p-4 text-center hover:border-primary hover:bg-primary/10 transition-colors bg-background"
-                  >
-                    <FolderUp className="h-6 w-6 text-primary mb-1" />
-                    <span className="text-xs font-medium text-foreground">
-                      Select CAD Folder / Files
-                    </span>
-                    <span className="text-[10px] text-muted-foreground">
-                      Click to pick folder or CAD files
-                    </span>
-                    <input
-                      id="cad_files_upload"
-                      type="file"
-                      // @ts-expect-error webkitdirectory is supported in modern browsers
-                      webkitdirectory=""
-                      directory=""
-                      multiple
-                      onChange={handleFileSelect}
-                      className="hidden"
-                      disabled={isPending}
-                    />
-                  </label>
-
-                  {selectedFiles.length > 0 && (
-                    <div className="rounded-md border border-border bg-background p-2.5">
-                      <p className="text-xs font-semibold text-foreground mb-1">
-                        {selectedFiles.length} file(s) selected:
-                      </p>
-                      <ul className="max-h-24 overflow-y-auto text-[11px] text-muted-foreground space-y-0.5 font-mono">
-                        {selectedFiles.slice(0, 10).map((f, i) => (
-                          <li key={i} className="truncate">• {f.webkitRelativePath || f.name}</li>
-                        ))}
-                        {selectedFiles.length > 10 && (
-                          <li className="italic text-primary">...and {selectedFiles.length - 10} more files</li>
-                        )}
-                      </ul>
-                    </div>
-                  )}
-                </div>
-
-                <Button
-                  onClick={handleSubmitWithFiles}
-                  disabled={isPending || selectedFiles.length === 0}
-                  className="w-full"
-                >
-                  {isPending
-                    ? uploadStatus || "Uploading CAD Files & Submitting..."
-                    : "Submit for QC"}
-                </Button>
-              </div>
-            ) : (
-              <div className="flex flex-col gap-3">
-                <p className="text-xs text-muted-foreground">
-                  Provide folder path and description / notes for QC before submitting.
+            <div className="flex flex-col gap-3 rounded-lg border border-primary/20 bg-primary/5 p-3.5">
+              <div>
+                <p className="text-xs font-semibold text-primary uppercase tracking-wide">
+                  Linode Task Storage
                 </p>
-                <div className="flex flex-col gap-1.5">
-                  <Label htmlFor="folder_path" className="text-xs font-medium">
-                    Local / Shared Folder Path
-                  </Label>
-                  <Input
-                    id="folder_path"
-                    placeholder="e.g. \\server\share\folder or Z:\Projects\CAD"
-                    value={folderPath}
-                    onChange={(e) => setFolderPath(e.target.value)}
-                    disabled={isPending}
-                  />
-                </div>
-                <div className="flex flex-col gap-1.5">
-                  <Label htmlFor="designer_notes" className="text-xs font-medium">
-                    Description / Notes for QC
-                  </Label>
-                  <Textarea
-                    id="designer_notes"
-                    placeholder="Write description or notes for QC..."
-                    value={designerNotes}
-                    onChange={(e) => setDesignerNotes(e.target.value)}
-                    rows={3}
-                    disabled={isPending}
-                  />
-                </div>
-                <Button
-                  onClick={() => run(() => submitForQCAction(task.id, "", designerNotes, folderPath))}
-                  disabled={isPending}
-                >
-                  {isPending ? "Submitting…" : "Submit for QC"}
-                </Button>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  Select your CAD (.3dm) files or renders to upload directly into the task's Linode storage folder.
+                </p>
               </div>
-            )}
+
+              <div className="flex flex-col gap-2">
+                <label
+                  htmlFor="cad_files_upload"
+                  className="flex cursor-pointer flex-col items-center justify-center rounded-lg border-2 border-dashed border-primary/30 p-4 text-center hover:border-primary hover:bg-primary/10 transition-colors bg-background"
+                >
+                  <FolderUp className="h-6 w-6 text-primary mb-1" />
+                  <span className="text-xs font-medium text-foreground">
+                    Select CAD Folder / Files
+                  </span>
+                  <span className="text-[10px] text-muted-foreground">
+                    Click to pick folder or CAD files
+                  </span>
+                  <input
+                    id="cad_files_upload"
+                    type="file"
+                    // @ts-expect-error webkitdirectory is supported in modern browsers
+                    webkitdirectory=""
+                    directory=""
+                    multiple
+                    onChange={handleFileSelect}
+                    className="hidden"
+                    disabled={isPending}
+                  />
+                </label>
+
+                {selectedFiles.length > 0 && (
+                  <div className="rounded-md border border-border bg-background p-2.5">
+                    <p className="text-xs font-semibold text-foreground mb-1">
+                      {selectedFiles.length} file(s) selected:
+                    </p>
+                    <ul className="max-h-24 overflow-y-auto text-[11px] text-muted-foreground space-y-0.5 font-mono">
+                      {selectedFiles.slice(0, 10).map((f, i) => (
+                        <li key={i} className="truncate">• {f.webkitRelativePath || f.name}</li>
+                      ))}
+                      {selectedFiles.length > 10 && (
+                        <li className="italic text-primary">...and {selectedFiles.length - 10} more files</li>
+                      )}
+                    </ul>
+                  </div>
+                )}
+              </div>
+
+              <div className="flex flex-col gap-1.5 mt-1">
+                <Label htmlFor="designer_notes" className="text-xs font-medium">
+                  Description / Notes for QC (Optional)
+                </Label>
+                <Textarea
+                  id="designer_notes"
+                  placeholder="Write description or notes for QC..."
+                  value={designerNotes}
+                  onChange={(e) => setDesignerNotes(e.target.value)}
+                  rows={2}
+                  disabled={isPending}
+                  className="bg-background"
+                />
+              </div>
+
+              <Button
+                onClick={handleSubmitWithFiles}
+                disabled={isPending || selectedFiles.length === 0}
+                className="w-full mt-1"
+              >
+                {isPending
+                  ? uploadStatus || "Uploading CAD Files & Submitting..."
+                  : "Submit for QC"}
+              </Button>
+            </div>
           </div>
         )}
 

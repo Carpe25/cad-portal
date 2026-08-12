@@ -597,56 +597,17 @@ export function CreateTaskForm({
           </div>
 
           <div className="flex flex-col gap-2 rounded-xl border border-primary/20 bg-primary/5 p-4">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-              <div>
-                <div className="flex items-center gap-2">
-                  <Label htmlFor="drive_folder_link" className="font-semibold text-foreground">
-                    Google Drive Folder
-                  </Label>
-                  <Badge variant="secondary" className="text-[10px] font-semibold bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border-emerald-500/30">
-                    Compulsory · Auto-created on Submit
-                  </Badge>
-                </div>
-                <div className="mt-1 flex items-center gap-2 text-xs text-muted-foreground">
-                  <span>Proposed Name:</span>
-                  <Badge variant="outline" className="font-mono text-xs font-semibold bg-background">
-                    {proposedFolderName}
-                  </Badge>
-                </div>
-              </div>
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                disabled={isPending || isCreatingDriveFolder}
-                onClick={handleConnectToDrive}
-                className="gap-2 border-primary/40 text-primary hover:bg-primary/10 self-start sm:self-auto"
-              >
-                <FolderPlus className="h-4 w-4" />
-                {isCreatingDriveFolder ? "Creating Folder..." : "Pre-connect Drive"}
-              </Button>
+            <div className="flex items-center gap-2">
+              <span className="font-semibold text-foreground text-xs uppercase tracking-wide">
+                Linode Storage Task Directory
+              </span>
+              <Badge variant="secondary" className="text-[10px] font-semibold bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border-emerald-500/30">
+                Auto-created on submit
+              </Badge>
             </div>
-
-            <Input
-              id="drive_folder_link"
-              name="drive_folder_link"
-              placeholder="Auto-generated on submit or paste https://drive.google.com/drive/folders/..."
-              disabled={isPending || isCreatingDriveFolder}
-              value={driveLink}
-              onChange={(e) => setDriveLink(e.target.value)}
-              className="bg-background"
-            />
-
-            {driveFolderSuccess ? (
-              <div className="flex items-center gap-1.5 text-xs font-medium text-emerald-600 dark:text-emerald-400">
-                <Check className="h-3.5 w-3.5" />
-                Folder created & connected to Drive successfully!
-              </div>
-            ) : (
-              <p className="text-xs text-muted-foreground">
-                A Google Drive folder will be automatically created upon task creation if not connected manually above.
-              </p>
-            )}
+            <p className="text-xs text-muted-foreground">
+              A dedicated folder <code className="font-mono text-foreground font-semibold">tasks/&#123;taskId&#125;/</code> will be created in Linode Object Storage for all reference images and CAD 3DM file uploads.
+            </p>
           </div>
 
           <div className="flex flex-col gap-1.5">
@@ -670,8 +631,8 @@ export function CreateTaskForm({
           </div>
 
           <div className="mt-2 flex justify-end">
-            <Button type="submit" disabled={isPending || isCreatingDriveFolder} className="w-full sm:w-auto">
-              {isPending ? "Creating Drive Folder & Task..." : "Create Task"}
+            <Button type="submit" disabled={isPending} className="w-full sm:w-auto">
+              {isPending ? "Creating Task..." : "Create Task"}
             </Button>
           </div>
         </form>

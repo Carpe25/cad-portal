@@ -2,11 +2,12 @@ import { notFound, redirect } from "next/navigation"
 import { getSession } from "@/lib/session"
 import { sql } from "@/lib/db"
 import { extractDriveFolderId, getDriveEmbedUrl } from "@/lib/drive"
+import { listTaskFiles, createTaskFolderInStorage } from "@/lib/linode-storage"
 import { Separator } from "@/components/ui/separator"
 import { Badge } from "@/components/ui/badge"
 import { TaskActions } from "./task-actions"
 import Link from "next/link"
-import { Pencil } from "lucide-react"
+import { Pencil, Download, FileCode } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import {
   STATUS_LABELS_FULL as STATUS_LABELS,
@@ -135,6 +136,18 @@ export default async function TaskDetailPage({
     ? extractDriveFolderId(task.drive_folder_link)
     : null
   const embedUrl = folderId ? getDriveEmbedUrl(folderId) : null
+
+  let linodeFiles = await listTaskFiles(task.id)
+  if (linodeFiles.length === 0) {
+    await createTaskFolderInStorage(task.id, task.customer_project_no || task.title)
+    linodeFiles = await listTaskFiles(task.id)
+  }
+
+  function formatFileSize(bytes: number): string {
+    if (bytes < 1024) return `${bytes} B`
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
+    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
+  }
 
   const designers =
     isManager || isQC
@@ -735,85 +748,99 @@ export default async function TaskDetailPage({
             )}
           </div>
 
-          {/* Right: Drive Folder / Reference Files Preview */}
+          {/* Right: Linode CAD & Task Files */}
           <div className="flex flex-col gap-4">
             <div className="overflow-hidden rounded-xl border border-border bg-card shadow-xs">
-              <div className="px-5 py-4">
-                <h2 className="text-xs font-semibold tracking-wider text-muted-foreground uppercase">
-                  Reference Files
-                </h2>
+              <div className="px-5 py-4 flex items-center justify-between">
+                <div>
+                  <h2 className="text-xs font-semibold tracking-wider text-muted-foreground uppercase">
+                    Linode CAD & Task Files
+                  </h2>
+                  <p className="text-[11px] text-muted-foreground mt-0.5">
+                    Bucket folder: <code className="font-mono text-foreground">tasks/{task.id}/</code>
+                  </p>
+                </div>
+                <Badge variant="secondary" className="text-[10px] font-mono font-semibold">
+                  {linodeFiles.length} file{linodeFiles.length !== 1 ? "s" : ""}
+                </Badge>
               </div>
               <Separator />
 
-              {/* Submitted Local / Shared Server Folder Paths */}
-              {(() => {
-                const folderSubmissions = submissions.filter((s) =>
-                  Boolean(s.folder_path?.trim() || (s.drive_link && !s.drive_link.startsWith("http")))
-                )
-                if (folderSubmissions.length === 0) return null
-
-                return (
-                  <div className="p-4 bg-muted/20 flex flex-col gap-3 border-b border-border">
-                    <span className="text-[11px] font-semibold text-muted-foreground tracking-wider uppercase">
-                      Submitted Shared Folder Path{folderSubmissions.length > 1 ? "s" : ""}
-                    </span>
-                    <div className="flex flex-col gap-2.5">
-                      {folderSubmissions.map((sub) => (
-                        <FolderPathLink
-                          key={sub.id}
-                          path={sub.folder_path || sub.drive_link}
-                          label={`${sub.version} · Submitted by ${sub.submitter_name}`}
-                        />
-                      ))}
-                    </div>
-                  </div>
-                )
-              })()}
-
-              {embedUrl ? (
-                <iframe
-                  src={embedUrl}
-                  className="h-96 w-full border-0"
-                  title="Drive folder preview"
-                  allow="autoplay"
-                />
-              ) : (
-                submissions.every(
-                  (s) => !s.folder_path && (!s.drive_link || s.drive_link.startsWith("http"))
-                ) && (
-                  <div className="flex flex-col items-center gap-2 px-4 py-10 text-center">
-                    <p className="text-sm text-muted-foreground">
-                      {task.drive_folder_link
-                        ? "Could not parse Drive folder link."
-                        : "No Drive folder linked yet."}
-                    </p>
-                    {task.drive_folder_link && (
-                      <a
-                        href={task.drive_folder_link}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="text-xs text-primary hover:underline"
+              {linodeFiles.length > 0 ? (
+                <div className="divide-y divide-border">
+                  {linodeFiles.map((file) => {
+                    const downloadUrl = `/api/tasks/${task.id}/files/download?key=${encodeURIComponent(file.key)}`
+                    const isCad =
+                      file.filename.endsWith(".3dm") ||
+                      file.filename.endsWith(".stl") ||
+                      file.filename.endsWith(".stp") ||
+                      file.filename.endsWith(".step") ||
+                      file.filename.endsWith(".zip")
+                    return (
+                      <div
+                        key={file.key}
+                        className="px-5 py-3.5 flex items-center justify-between gap-3 hover:bg-muted/20 transition-colors"
                       >
-                        Open in Drive →
-                      </a>
-                    )}
-                  </div>
-                )
-              )}
-              {task.drive_folder_link && embedUrl && (
-                <div className="border-t border-border px-4 py-2">
-                  <a
-                    href={task.drive_folder_link}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="text-xs text-primary hover:underline"
-                  >
-                    Open folder in Drive →
-                  </a>
+                        <div className="flex items-center gap-3 min-w-0">
+                          <div
+                            className={`p-2 rounded-lg shrink-0 ${
+                              isCad
+                                ? "bg-primary/10 text-primary"
+                                : "bg-muted text-muted-foreground"
+                            }`}
+                          >
+                            <FileCode className="h-4 w-4" />
+                          </div>
+                          <div className="min-w-0">
+                            <p
+                              className="text-xs font-medium text-foreground truncate"
+                              title={file.filename}
+                            >
+                              {file.filename}
+                            </p>
+                            <p className="text-[10px] text-muted-foreground">
+                              {formatFileSize(file.size)}
+                              {file.lastModified &&
+                                ` · ${new Date(file.lastModified).toLocaleDateString("en-IN")}`}
+                            </p>
+                          </div>
+                        </div>
+
+                        <a
+                          href={downloadUrl}
+                          download
+                          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-primary text-primary-foreground text-xs font-medium hover:bg-primary/90 transition-colors shrink-0 shadow-2xs"
+                        >
+                          <Download className="h-3.5 w-3.5" />
+                          Download
+                        </a>
+                      </div>
+                    )
+                  })}
+                </div>
+              ) : (
+                <div className="px-5 py-8 text-center text-xs text-muted-foreground">
+                  No CAD or reference files uploaded to Linode storage for this task yet.
                 </div>
               )}
             </div>
 
+            {/* Optional Legacy Google Drive Preview */}
+            {embedUrl && (
+              <div className="overflow-hidden rounded-xl border border-border bg-card shadow-xs">
+                <div className="px-5 py-3.5 border-b border-border">
+                  <h3 className="text-xs font-semibold tracking-wider text-muted-foreground uppercase">
+                    Legacy Google Drive Folder
+                  </h3>
+                </div>
+                <iframe
+                  src={embedUrl}
+                  className="h-80 w-full border-0"
+                  title="Drive folder preview"
+                  allow="autoplay"
+                />
+              </div>
+            )}
           </div>
         </div>
       </div>
