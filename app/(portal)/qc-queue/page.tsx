@@ -153,7 +153,7 @@ async function QCQueueContent() {
                 <span className="text-xs text-muted-foreground">
                   {new Date(item.submitted_at).toLocaleString("en-IN", {
                     day: "numeric",
-                    month: "short",
+                    month: "long",
                     hour: "2-digit",
                     minute: "2-digit",
                   })}

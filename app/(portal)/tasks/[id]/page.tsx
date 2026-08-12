@@ -5,6 +5,9 @@ import { extractDriveFolderId, getDriveEmbedUrl } from "@/lib/drive"
 import { Separator } from "@/components/ui/separator"
 import { Badge } from "@/components/ui/badge"
 import { TaskActions } from "./task-actions"
+import Link from "next/link"
+import { Pencil } from "lucide-react"
+import { Button } from "@/components/ui/button"
 import {
   STATUS_LABELS_FULL as STATUS_LABELS,
   STATUS_COLORS,
@@ -13,11 +16,12 @@ import {
   isTaskOverdue,
   isSubmissionLate,
   formatDateDisplay,
+  formatDateTimeDisplay,
 } from "@/lib/task-utils"
 import { ParsedTrelloCard } from "@/lib/trello-types"
 import { PageHeader } from "@/components/portal/page-header"
 import { FolderPathLink } from "@/components/folder-path-link"
-import { TaskCometChatPanel } from "@/components/portal/task-cometchat-wrapper"
+import { DeadlineCountdown } from "@/components/portal/deadline-countdown"
 
 type Task = {
   id: string
@@ -43,6 +47,7 @@ type Task = {
   drive_folder_link: string | null
   revision_notes: string | null
   assigned_to: string | null
+  assigned_at: string | null
   designer_name: string | null
   created_by: string
   manager_name: string
@@ -102,7 +107,7 @@ export default async function TaskDetailPage({
     LEFT JOIN users m ON t.created_by = m.id
     WHERE LOWER(t.id::text) = LOWER(${cleanId})
        OR LOWER(t.readable_id) = LOWER(${cleanId})
-       OR t.id::text = REPLACE(${cleanId}, '-', '')
+       OR REPLACE(t.id::text, '-', '') = LOWER(REPLACE(${cleanId}, '-', ''))
   `
 
   if (!taskRows.length) notFound()
@@ -164,6 +169,14 @@ export default async function TaskDetailPage({
           description={descriptionLine}
           action={
             <div className="flex items-center gap-2">
+              {isManager && (
+                <Button asChild variant="outline" size="sm" className="gap-1.5 text-xs">
+                  <Link href={`/tasks/${task.id}/edit`}>
+                    <Pencil className="h-3.5 w-3.5" />
+                    Edit Task
+                  </Link>
+                </Button>
+              )}
               <Badge
                 variant="outline"
                 className={`capitalize ${PRIORITY_COLORS[task.priority] ?? ""}`}
@@ -252,7 +265,7 @@ export default async function TaskDetailPage({
                     <dd className="mt-0.5 font-medium">
                       {formatDateDisplay(task.request_date, {
                         day: "numeric",
-                        month: "short",
+                        month: "long",
                         year: "numeric",
                       })}
                     </dd>
@@ -264,18 +277,16 @@ export default async function TaskDetailPage({
                 </div>
                 <div>
                   <dt className="text-xs text-muted-foreground">Deadline</dt>
-                  <dd className="mt-0.5 font-medium flex items-center gap-2">
-                    <span>
-                      {formatDateDisplay(task.deadline, {
-                        day: "numeric",
-                        month: "long",
-                        year: "numeric",
-                      })}
-                    </span>
-                    {isTaskOverdue(task.deadline, task.status) && (
-                      <Badge variant="destructive" className="bg-red-500/10 text-red-600 dark:text-red-400 border-red-500/30 text-[10px] px-1.5 py-0 font-semibold">
-                        Overdue
-                      </Badge>
+                  <dd className="mt-1 flex flex-wrap items-center gap-2">
+                    <DeadlineCountdown deadline={task.deadline} status={task.status} />
+                    {task.deadline && (
+                      <span className="text-xs text-muted-foreground font-semibold">
+                        ({formatDateDisplay(task.deadline, {
+                          day: "numeric",
+                          month: "long",
+                          year: "numeric",
+                        })})
+                      </span>
                     )}
                   </dd>
                 </div>
@@ -284,13 +295,15 @@ export default async function TaskDetailPage({
                   <dd className="mt-0.5">{task.manager_name}</dd>
                 </div>
                 <div>
-                  <dt className="text-xs text-muted-foreground">Created on</dt>
-                  <dd className="mt-0.5">
-                    {formatDateDisplay(task.created_at, {
-                      day: "numeric",
-                      month: "short",
-                      year: "numeric",
-                    })}
+                  <dt className="text-xs text-muted-foreground">Created at</dt>
+                  <dd className="mt-0.5 font-medium text-xs">
+                    {formatDateTimeDisplay(task.created_at)}
+                  </dd>
+                </div>
+                <div>
+                  <dt className="text-xs text-muted-foreground">Assigned at</dt>
+                  <dd className="mt-0.5 font-medium text-xs">
+                    {task.assigned_at ? formatDateTimeDisplay(task.assigned_at) : "Unassigned"}
                   </dd>
                 </div>
               </dl>
@@ -414,7 +427,7 @@ export default async function TaskDetailPage({
                           <p className="text-sm">
                             {new Date(trelloData.dateLastActivity).toLocaleDateString("en-US", {
                               year: "numeric",
-                              month: "short",
+                              month: "long",
                               day: "numeric",
                               hour: "2-digit",
                               minute: "2-digit",
@@ -571,7 +584,7 @@ export default async function TaskDetailPage({
                                 {att.name}
                               </span>
                               <span className="ml-auto text-muted-foreground shrink-0">
-                                {new Date(att.date).toLocaleDateString()}
+                                {formatDateDisplay(att.date, { day: "numeric", month: "long", year: "numeric" })}
                               </span>
                             </a>
                           ))}
@@ -665,7 +678,7 @@ export default async function TaskDetailPage({
                             <p className="text-xs text-muted-foreground">
                               {new Date(sub.submitted_at).toLocaleString("en-IN", {
                                 day: "numeric",
-                                month: "short",
+                                month: "long",
                                 hour: "2-digit",
                                 minute: "2-digit",
                               })}
@@ -800,17 +813,6 @@ export default async function TaskDetailPage({
                 </div>
               )}
             </div>
-
-            {/* Task Discussion Panel - CometChat */}
-            <TaskCometChatPanel
-              taskId={task.id}
-              taskTitle={taskHeading}
-              currentUser={{
-                id: session.id,
-                name: session.name,
-                email: session.email,
-              }}
-            />
 
           </div>
         </div>

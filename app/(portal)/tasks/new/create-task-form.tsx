@@ -54,6 +54,15 @@ function formatDateDDMMYYYY(date: Date): string {
   return `${day}-${month}-${year}`
 }
 
+function formatDateDDMMYYYYTime(date: Date): string {
+  const day = String(date.getDate()).padStart(2, "0")
+  const month = String(date.getMonth() + 1).padStart(2, "0")
+  const year = date.getFullYear()
+  const hours = String(date.getHours()).padStart(2, "0")
+  const mins = String(date.getMinutes()).padStart(2, "0")
+  return `${day}-${month}-${year} ${hours}:${mins}`
+}
+
 function parseDateString(dateStr: string): Date {
   if (!dateStr) return new Date()
   const parts = dateStr.trim().split("-")
@@ -80,7 +89,7 @@ function calculateDeadlineDate(categoryCode: string, baseDateStr?: string): stri
     baseDate = parsed
   }
   const deadlineDate = new Date(baseDate.getTime() + hours * 60 * 60 * 1000)
-  return formatDateDDMMYYYY(deadlineDate)
+  return formatDateDDMMYYYYTime(deadlineDate)
 }
 
 function formatDateForFolderName(dateStr: string): string {
@@ -106,8 +115,8 @@ function formatDateForFolderName(dateStr: string): string {
   }
 
   const months = [
-    "Jan", "Feb", "Mar", "Apr", "May", "Jun",
-    "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"
+    "January", "February", "March", "April", "May", "June",
+    "July", "August", "September", "October", "November", "December"
   ]
   const monthName = months[monthIdx] || parts[1]
   return `${day}-${monthName}-${year}`
@@ -423,7 +432,7 @@ export function CreateTaskForm({
                         {cat.code}
                       </span>
                       {" - "}
-                      <span>{cat.label} ({CATEGORY_DEADLINE_HOURS[cat.code] ?? 24}h)</span>
+                      <span>{cat.label}</span>
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -590,9 +599,14 @@ export function CreateTaskForm({
           <div className="flex flex-col gap-2 rounded-xl border border-primary/20 bg-primary/5 p-4">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
               <div>
-                <Label htmlFor="drive_folder_link" className="font-semibold text-foreground">
-                  Google Drive Folder
-                </Label>
+                <div className="flex items-center gap-2">
+                  <Label htmlFor="drive_folder_link" className="font-semibold text-foreground">
+                    Google Drive Folder
+                  </Label>
+                  <Badge variant="secondary" className="text-[10px] font-semibold bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border-emerald-500/30">
+                    Compulsory · Auto-created on Submit
+                  </Badge>
+                </div>
                 <div className="mt-1 flex items-center gap-2 text-xs text-muted-foreground">
                   <span>Proposed Name:</span>
                   <Badge variant="outline" className="font-mono text-xs font-semibold bg-background">
@@ -609,25 +623,29 @@ export function CreateTaskForm({
                 className="gap-2 border-primary/40 text-primary hover:bg-primary/10 self-start sm:self-auto"
               >
                 <FolderPlus className="h-4 w-4" />
-                {isCreatingDriveFolder ? "Creating Folder..." : "Connect to Drive"}
+                {isCreatingDriveFolder ? "Creating Folder..." : "Pre-connect Drive"}
               </Button>
             </div>
 
             <Input
               id="drive_folder_link"
               name="drive_folder_link"
-              placeholder="https://drive.google.com/drive/folders/..."
+              placeholder="Auto-generated on submit or paste https://drive.google.com/drive/folders/..."
               disabled={isPending || isCreatingDriveFolder}
               value={driveLink}
               onChange={(e) => setDriveLink(e.target.value)}
               className="bg-background"
             />
 
-            {driveFolderSuccess && (
+            {driveFolderSuccess ? (
               <div className="flex items-center gap-1.5 text-xs font-medium text-emerald-600 dark:text-emerald-400">
                 <Check className="h-3.5 w-3.5" />
                 Folder created & connected to Drive successfully!
               </div>
+            ) : (
+              <p className="text-xs text-muted-foreground">
+                A Google Drive folder will be automatically created upon task creation if not connected manually above.
+              </p>
             )}
           </div>
 
@@ -652,8 +670,8 @@ export function CreateTaskForm({
           </div>
 
           <div className="mt-2 flex justify-end">
-            <Button type="submit" disabled={isPending} className="w-full sm:w-auto">
-              {isPending ? "Creating Task..." : "Create Task"}
+            <Button type="submit" disabled={isPending || isCreatingDriveFolder} className="w-full sm:w-auto">
+              {isPending ? "Creating Drive Folder & Task..." : "Create Task"}
             </Button>
           </div>
         </form>

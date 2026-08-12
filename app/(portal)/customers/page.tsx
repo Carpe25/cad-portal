@@ -111,7 +111,7 @@ async function CustomersContent() {
                 <div className="text-xs text-muted-foreground">
                   {new Date(c.created_at).toLocaleDateString("en-US", {
                     year: "numeric",
-                    month: "short",
+                    month: "long",
                     day: "numeric",
                   })}
                 </div>

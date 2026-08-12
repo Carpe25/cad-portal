@@ -4,6 +4,7 @@ import { redirect } from "next/navigation"
 import { revalidatePath } from "next/cache"
 import { sql } from "@/lib/db"
 import { getSession } from "@/lib/session"
+import { normalizeDeadlineForDb, normalizeRequestDateForDb } from "@/lib/task-utils"
 
 export async function assignToMeAction(taskId: string) {
   try {
@@ -31,7 +32,7 @@ export async function assignToMeAction(taskId: string) {
     // Set assigned_to to designer's ID and status to in_progress
     await sql`
       UPDATE tasks
-      SET assigned_to = ${session.id}, status = 'in_progress'
+      SET assigned_to = ${session.id}, status = 'in_progress', assigned_at = NOW()
       WHERE id = ${taskId} AND status = 'assigned'
         AND (assigned_to IS NULL OR assigned_to = ${session.id})
     `
@@ -46,6 +47,7 @@ export async function assignToMeAction(taskId: string) {
     return { error: err.message || "Failed to assign task." }
   }
 }
+
 
 export async function submitForQCAction(
   taskId: string,
@@ -299,7 +301,10 @@ export async function reopenForClientRevisionAction(
   newDesignerId: string | null
 ) {
   const session = await getSession()
-  if (!session || !session.roles.includes("manager"))
+  if (
+    !session ||
+    (!session.roles.includes("manager") && !session.roles.includes("qc"))
+  )
     return { error: "Unauthorized" }
 
   // Drop restrictive check constraint if present in DB schema
@@ -318,13 +323,16 @@ export async function reopenForClientRevisionAction(
     WHERE task_id = ${taskId} AND outcome = 'approved'
   `
 
+  const assignedAtValue = newDesignerId ? new Date().toISOString() : null
+
   await sql`
     UPDATE tasks
     SET
       status = 'assigned',
       revision_notes = ${revisionNotes},
       points = ${newPoints},
-      assigned_to = ${newDesignerId}
+      assigned_to = ${newDesignerId},
+      assigned_at = ${assignedAtValue}
     WHERE id = ${taskId}
   `
 
@@ -332,3 +340,208 @@ export async function reopenForClientRevisionAction(
   revalidatePath("/tasks")
   revalidatePath("/dashboard")
 }
+
+export async function updateTaskAction(
+  taskId: string,
+  data: any
+) {
+  const session = await getSession()
+  if (!session || !session.roles.includes("manager")) {
+    return { error: "Unauthorized" }
+  }
+
+  const { ensureTaskTableColumns } = await import("@/app/(portal)/tasks/new/actions")
+  await ensureTaskTableColumns()
+
+  // Fetch current task info to check if assigned_to is changing
+  const cleanId = decodeURIComponent(taskId.trim())
+  const currentTaskRows = await sql`
+    SELECT id, assigned_to, assigned_at, reference_image FROM tasks
+    WHERE LOWER(id::text) = LOWER(${cleanId})
+       OR LOWER(readable_id) = LOWER(${cleanId})
+       OR REPLACE(id::text, '-', '') = LOWER(REPLACE(${cleanId}, '-', ''))
+  `
+  if (!currentTaskRows.length) {
+    return { error: "Task not found" }
+  }
+  const currentTask = currentTaskRows[0] as {
+    id: string
+    assigned_to: string | null
+    assigned_at: string | null
+    reference_image: string | null
+  }
+
+  let customerProjectNo: string | null = null
+  let speed: string | null = null
+  let customerCode: string | null = null
+  let clientName: string | null = null
+  let categoryCode: string | null = null
+  let complexity: string | null = null
+  let workType = "New"
+  let version = "V1"
+  let srNo: string | null = null
+  let cdProjectNo: string | null = null
+  let requestDate: string | null = null
+  let title = "Untitled Task"
+  let styleRefNumber: string | null = null
+  let description: string | null = null
+  let points = 0
+  let deadline: string | null = null
+  let driveFolderLink: string | null = null
+  let assignedTo: string | null = null
+  let priority = "medium"
+  let referenceImageUrl: string | null = currentTask.reference_image
+  const newReferenceUrls: string[] = []
+
+  if (data instanceof FormData) {
+    customerProjectNo = (data.get("customer_project_no") as string) || null
+    speed = (data.get("speed") as string) || null
+    customerCode = (data.get("customer_code") as string) || null
+    clientName = (data.get("client_name") as string) || null
+    categoryCode = (data.get("category_code") as string) || null
+    complexity = (data.get("complexity") as string) || null
+    workType = (data.get("work_type") as string) || "New"
+    version = (data.get("version") as string) || "V1"
+    srNo = (data.get("sr_no") as string) || null
+    cdProjectNo = (data.get("cd_project_no") as string) || null
+    const reqDateRaw = (data.get("request_date") as string) || null
+    requestDate = normalizeRequestDateForDb(reqDateRaw)
+    title = (data.get("title") as string) || customerProjectNo || cdProjectNo || "Untitled Task"
+    styleRefNumber = (data.get("style_ref_number") as string) || null
+    description = (data.get("description") as string) || null
+    const pointsRaw = data.get("points") as string
+    points = pointsRaw ? parseFloat(pointsRaw) : 0
+    const deadlineRaw = (data.get("deadline") as string) || null
+    deadline = normalizeDeadlineForDb(deadlineRaw)
+    driveFolderLink = (data.get("drive_folder_link") as string) || null
+    assignedTo = (data.get("assigned_to") as string) || null
+    priority = speed === "U" ? "high" : "medium"
+
+    const imageFiles = data.getAll("reference_image") as File[]
+    if (imageFiles.length > 0) {
+      const { compressImage } = await import("@/lib/image-compress")
+      const { uploadToReferenceStorage } = await import("@/lib/linode-storage")
+      for (let i = 0; i < imageFiles.length; i++) {
+        const imageFile = imageFiles[i]
+        if (imageFile && imageFile.size > 0) {
+          try {
+            const bytes = await imageFile.arrayBuffer()
+            const inputBuffer = Buffer.from(bytes)
+            const { compressedBuffer, ext } = await compressImage(inputBuffer, imageFile.name)
+            const safeFilename = `${Date.now()}_${i}_img${ext}`
+            const storedUrl = await uploadToReferenceStorage(compressedBuffer, safeFilename, ext)
+            newReferenceUrls.push(storedUrl)
+          } catch (uploadErr) {
+            console.error("Error saving reference image file:", uploadErr)
+          }
+        }
+      }
+    }
+  } else {
+    customerProjectNo = data.customer_project_no || null
+    speed = data.speed || null
+    customerCode = data.customer_code || null
+    clientName = data.client_name || null
+    categoryCode = data.category_code || null
+    complexity = data.complexity || null
+    workType = data.work_type || "New"
+    version = data.version || "V1"
+    srNo = data.sr_no || null
+    cdProjectNo = data.cd_project_no || null
+    const reqDateRaw = data.request_date || null
+    requestDate = normalizeRequestDateForDb(reqDateRaw)
+    title = data.title || customerProjectNo || cdProjectNo || "Untitled Task"
+    styleRefNumber = data.style_ref_number || null
+    description = data.description || null
+    points = typeof data.points === "number" ? data.points : (data.points ? parseFloat(String(data.points)) : 0)
+    const deadlineRaw = data.deadline || null
+    deadline = normalizeDeadlineForDb(deadlineRaw)
+    driveFolderLink = data.drive_folder_link || null
+    assignedTo = data.assigned_to || null
+    priority = speed === "U" ? "high" : "medium"
+
+    const base64List = data.referenceImageBase64s || (data.referenceImageBase64 ? [data.referenceImageBase64] : [])
+    if (base64List.length > 0) {
+      const { compressImage } = await import("@/lib/image-compress")
+      const { uploadToReferenceStorage } = await import("@/lib/linode-storage")
+      for (let i = 0; i < base64List.length; i++) {
+        const b64 = base64List[i]
+        if (b64) {
+          try {
+            const base64Data = b64.replace(/^data:image\/\w+;base64,/, "")
+            const inputBuffer = Buffer.from(base64Data, "base64")
+            const { compressedBuffer, ext } = await compressImage(inputBuffer)
+            const safeFilename = `${Date.now()}_${i}_img${ext}`
+            const storedUrl = await uploadToReferenceStorage(compressedBuffer, safeFilename, ext)
+            newReferenceUrls.push(storedUrl)
+          } catch (uploadErr) {
+            console.error("Error saving base64 reference image:", uploadErr)
+          }
+        }
+      }
+    }
+  }
+
+  if (newReferenceUrls.length > 0) {
+    let existingUrls: string[] = []
+    if (currentTask.reference_image) {
+      try {
+        existingUrls = JSON.parse(currentTask.reference_image)
+        if (!Array.isArray(existingUrls)) existingUrls = [currentTask.reference_image]
+      } catch (e) {
+        existingUrls = [currentTask.reference_image]
+      }
+    }
+    referenceImageUrl = JSON.stringify([...existingUrls, ...newReferenceUrls])
+  }
+
+  if (!clientName) {
+    return { error: "Customer name is required" }
+  }
+
+  const targetAssignedTo = (assignedTo && assignedTo.trim() !== "" && assignedTo !== "unassigned") ? assignedTo : null
+
+  let assignedAtSql = sql`NULL`
+  if (targetAssignedTo) {
+    if (targetAssignedTo !== currentTask.assigned_to || !currentTask.assigned_at) {
+      assignedAtSql = sql`NOW()`
+    } else {
+      const existingIso = new Date(currentTask.assigned_at).toISOString()
+      assignedAtSql = sql`${existingIso}::timestamptz`
+    }
+  }
+
+  await sql`
+    UPDATE tasks
+    SET
+      title = ${title},
+      client_name = ${clientName},
+      style_ref_number = ${styleRefNumber},
+      description = ${description},
+      points = ${points},
+      priority = ${priority},
+      deadline = ${deadline},
+      drive_folder_link = ${driveFolderLink},
+      assigned_to = ${targetAssignedTo},
+      assigned_at = ${assignedAtSql},
+      customer_project_no = ${customerProjectNo},
+      speed = ${speed},
+      customer_code = ${customerCode},
+      category_code = ${categoryCode},
+      complexity = ${complexity},
+      work_type = ${workType},
+      version = ${version},
+      sr_no = ${srNo},
+      cd_project_no = ${cdProjectNo},
+      request_date = ${requestDate},
+      reference_image = ${referenceImageUrl}
+    WHERE id = ${currentTask.id}
+  `
+
+  revalidatePath(`/tasks/${taskId}`)
+  revalidatePath("/tasks")
+  revalidatePath("/dashboard")
+  revalidatePath("/qc-queue")
+  return { success: true }
+}
+

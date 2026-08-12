@@ -507,9 +507,9 @@ export function TaskActions({
           </div>
         )}
 
-        {/* Manager: Client revision on closed/client_ready task */}
+        {/* Manager/QC: Client revision on closed/client_ready task */}
         {(task.status === "closed" || task.status === "client_ready") &&
-          isManager && (
+          (isManager || isQC) && (
             <div className="flex flex-col gap-2 border-t border-border pt-3">
               {!showReopen ? (
                 <Button

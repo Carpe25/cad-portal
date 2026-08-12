@@ -17,6 +17,7 @@ import {
 } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { Input } from "@/components/ui/input"
+import { DeadlineCountdown } from "@/components/portal/deadline-countdown"
 import {
   STATUS_LABELS,
   STATUS_LABELS_FULL,
@@ -38,6 +39,7 @@ export type KanbanTask = {
   priority: string
   deadline: string | null
   assigned_to: string | null
+  assigned_at?: string | null
   designer_name?: string | null
   client_name?: string | null
   created_at?: string
@@ -58,7 +60,7 @@ const STAGES = [
 ]
 
 function formatDeadline(deadline: string | null): string {
-  return formatDateDisplay(deadline, { day: "numeric", month: "short" })
+  return formatDateDisplay(deadline, { day: "numeric", month: "long" })
 }
 
 export function KanbanBoard({
@@ -217,9 +219,9 @@ export function KanbanBoard({
           - Mobile: Vertical stack without horizontal scrolling (`flex flex-col gap-4 w-full`)
           - Desktop (sm+ & 4K): Responsive Grid layout (`grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-4 w-full`)
       */}
-      <div className="w-full">
+      <div className="w-full overflow-x-auto pb-3">
         {viewMode === "stage" ? (
-          <div className="flex flex-col gap-4 w-full sm:grid sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-6">
+          <div className="flex flex-col gap-4 w-full sm:grid sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-6 min-w-[760px] xl:min-w-0">
             {visibleStageColumns.map((column) => (
               <KanbanColumn
                 key={column.key}
@@ -307,17 +309,17 @@ function TaskCard({
   return (
     <Link
       href={`/tasks/${task.id}`}
-      className="group relative flex flex-col justify-between rounded-lg border border-border bg-card p-3 shadow-2xs transition-all hover:border-primary/50 hover:shadow-xs"
+      className="group relative flex flex-col justify-between rounded-lg border border-border bg-card p-3 shadow-2xs transition-all hover:border-primary/50 hover:shadow-xs overflow-hidden max-w-full min-w-0"
     >
-      <div>
+      <div className="min-w-0 max-w-full">
         {/* Top Meta: ID & Speed/Priority */}
-        <div className="flex items-center justify-between gap-1.5 text-[11px]">
-          <span className="font-mono font-medium text-muted-foreground group-hover:text-primary">
+        <div className="flex items-center justify-between gap-1.5 text-[11px] min-w-0">
+          <span className="font-mono font-medium text-muted-foreground group-hover:text-primary truncate">
             {task.cd_project_no || task.readable_id}
           </span>
           <Badge
             variant="outline"
-            className={`text-[10px] px-1.5 py-0 ${
+            className={`text-[10px] px-1.5 py-0 shrink-0 ${
               SPEED_COLORS[task.speed || "N"] ||
               PRIORITY_COLORS[task.priority] ||
               ""
@@ -328,7 +330,7 @@ function TaskCard({
         </div>
 
         {/* Task Title / Project # */}
-        <h4 className="mt-1.5 line-clamp-2 text-xs font-semibold text-foreground group-hover:text-primary">
+        <h4 className="mt-1.5 line-clamp-2 text-xs font-semibold text-foreground group-hover:text-primary break-words">
           {task.customer_project_no || task.title}
         </h4>
 
@@ -341,7 +343,7 @@ function TaskCard({
       </div>
 
       {/* Bottom Metadata & Badges */}
-      <div className="mt-3 flex items-center justify-between gap-2 border-t border-border/40 pt-2 text-[11px] text-muted-foreground">
+      <div className="mt-3 flex flex-wrap items-center justify-between gap-1.5 border-t border-border/40 pt-2 text-[11px] text-muted-foreground min-w-0 max-w-full">
         {/* VIEW SPECIFIC BADGE:
             If in Designer mode: Show Stage/Status badge
             If in Stage mode: Show Assigned Designer name badge
@@ -349,14 +351,14 @@ function TaskCard({
         {viewMode === "designer" ? (
           <Badge
             variant="outline"
-            className={`text-[10px] px-1.5 py-0 font-medium ${
+            className={`text-[10px] px-1.5 py-0 font-medium truncate max-w-full ${
               STATUS_COLORS[task.status] ?? ""
             }`}
           >
             {STATUS_LABELS_FULL[task.status] ?? STATUS_LABELS[task.status] ?? task.status}
           </Badge>
         ) : (
-          <div className="flex items-center gap-1 min-w-0 truncate text-xs">
+          <div className="flex items-center gap-1 min-w-0 max-w-full truncate text-xs">
             <User className="h-3 w-3 shrink-0 text-muted-foreground" />
             <span className="truncate text-foreground/80 font-medium">
               {task.designer_name || "Unassigned"}
@@ -364,19 +366,10 @@ function TaskCard({
           </div>
         )}
 
-        {/* Deadline & Overdue Badge */}
+        {/* Highlighted Extra-Bold Deadline Countdown */}
         {task.deadline && (
-          <div className="flex shrink-0 items-center gap-1.5 text-[11px]">
-            {isTaskOverdue(task.deadline, task.status) ? (
-              <Badge variant="destructive" className="bg-red-500/10 text-red-600 dark:text-red-400 border-red-500/30 text-[10px] px-1.5 py-0 font-semibold">
-                Overdue
-              </Badge>
-            ) : (
-              <>
-                <Clock className="h-3 w-3" />
-                <span>{formatDeadline(task.deadline)}</span>
-              </>
-            )}
+          <div className="flex items-center min-w-0 max-w-full">
+            <DeadlineCountdown deadline={task.deadline} status={task.status} />
           </div>
         )}
       </div>

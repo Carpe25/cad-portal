@@ -350,7 +350,7 @@ const STATUS_DOT: Record<string, string> = {
 }
 
 function formatDeadline(deadline: string | null): string {
-  return formatDateDisplay(deadline, { day: "numeric", month: "short" })
+  return formatDateDisplay(deadline, { day: "numeric", month: "long" })
 }
 
 function DashboardContent({

@@ -3,6 +3,7 @@
 import { redirect } from "next/navigation"
 import { sql } from "@/lib/db"
 import { getSession } from "@/lib/session"
+import { normalizeDeadlineForDb } from "@/lib/task-utils"
 import fs from "fs"
 import path from "path"
 
@@ -22,7 +23,8 @@ export async function ensureTaskTableColumns() {
     ADD COLUMN IF NOT EXISTS sr_no TEXT,
     ADD COLUMN IF NOT EXISTS cd_project_no TEXT,
     ADD COLUMN IF NOT EXISTS request_date DATE,
-    ADD COLUMN IF NOT EXISTS reference_image TEXT;
+    ADD COLUMN IF NOT EXISTS reference_image TEXT,
+    ADD COLUMN IF NOT EXISTS assigned_at TIMESTAMPTZ;
   `
   try {
     await sql`ALTER TABLE tasks ALTER COLUMN points TYPE NUMERIC(10,2) USING points::numeric;`
@@ -33,6 +35,11 @@ export async function ensureTaskTableColumns() {
     await sql`ALTER TABLE points_log ALTER COLUMN points TYPE NUMERIC(10,2) USING points::numeric;`
   } catch (err) {
     // Column might already be numeric
+  }
+  try {
+    await sql`ALTER TABLE tasks ALTER COLUMN deadline TYPE TIMESTAMPTZ USING deadline::timestamptz;`
+  } catch (err) {
+    // Column might already be TIMESTAMPTZ
   }
 }
 
@@ -45,6 +52,34 @@ function normalizeDateForDb(dateStr: string | null): string | null {
     return `${parts[2]}-${parts[1].padStart(2, "0")}-${parts[0].padStart(2, "0")}`
   }
   return trimmed
+}
+
+function formatDateForFolderName(dateStr: string | null): string {
+  if (!dateStr) return ""
+  const parts = dateStr.trim().split("-")
+  if (parts.length !== 3) return dateStr
+  let year = ""
+  let monthIdx = 0
+  let day = ""
+
+  if (parts[0].length === 4) {
+    year = parts[0].slice(-2)
+    monthIdx = parseInt(parts[1], 10) - 1
+    day = parts[2].padStart(2, "0")
+  } else if (parts[2].length === 4) {
+    year = parts[2].slice(-2)
+    monthIdx = parseInt(parts[1], 10) - 1
+    day = parts[0].padStart(2, "0")
+  } else {
+    return dateStr
+  }
+
+  const months = [
+    "January", "February", "March", "April", "May", "June",
+    "July", "August", "September", "October", "November", "December"
+  ]
+  const monthName = months[monthIdx] || parts[1]
+  return `${day}-${monthName}-${year}`
 }
 
 export type CreateTaskPayload = {
@@ -122,7 +157,8 @@ export async function createTaskAction(data: CreateTaskPayload | FormData) {
     description = (data.get("description") as string) || null
     const pointsRaw = data.get("points") as string
     points = pointsRaw ? parseFloat(pointsRaw) : 0
-    deadline = normalizeDateForDb((data.get("deadline") as string) || null)
+    const deadlineRaw = (data.get("deadline") as string) || null
+    deadline = normalizeDeadlineForDb(deadlineRaw)
     driveFolderLink = (data.get("drive_folder_link") as string) || null
     assignedTo = (data.get("assigned_to") as string) || null
     priority = speed === "U" ? "high" : "medium"
@@ -160,7 +196,8 @@ export async function createTaskAction(data: CreateTaskPayload | FormData) {
     styleRefNumber = data.style_ref_number || null
     description = data.description || null
     points = typeof data.points === "number" ? data.points : (data.points ? parseFloat(String(data.points)) : 0)
-    deadline = normalizeDateForDb(data.deadline || null)
+    const deadlineRaw = data.deadline || null
+    deadline = normalizeDeadlineForDb(deadlineRaw)
     driveFolderLink = data.drive_folder_link || null
     assignedTo = data.assigned_to || null
     priority = speed === "U" ? "high" : "medium"
@@ -192,16 +229,49 @@ export async function createTaskAction(data: CreateTaskPayload | FormData) {
     return { error: "Customer name is required" }
   }
 
+  // Ensure Google Drive folder link is created automatically if not provided
+  if (!driveFolderLink || !driveFolderLink.trim()) {
+    try {
+      const { createGoogleDriveFolder } = await import("@/lib/drive")
+      const formattedReqDate = formatDateForFolderName(requestDate)
+      const folderParts = [
+        cdProjectNo ? cdProjectNo.trim() : null,
+        customerProjectNo ? customerProjectNo.trim() : null,
+        version ? version.trim() : null,
+        formattedReqDate,
+      ].filter(Boolean)
+
+      const autoFolderName = folderParts.join("_") || title || `Task_${Date.now()}`
+      const driveRes = await createGoogleDriveFolder(autoFolderName)
+      if (driveRes.folderUrl) {
+        driveFolderLink = driveRes.folderUrl
+      }
+    } catch (driveErr: any) {
+      console.error("Auto Google Drive folder creation error:", driveErr)
+      return {
+        error: `Failed to auto-create Google Drive folder: ${
+          driveErr.message || "Google Drive connection error"
+        }`,
+      }
+    }
+  }
+
+  if (!driveFolderLink || !driveFolderLink.trim()) {
+    return { error: "Google Drive folder connection is compulsory for creating a task." }
+  }
+
+  const assignedAtValue = assignedTo ? new Date().toISOString() : null
+
   const rows = await sql`
     INSERT INTO tasks (
       title, client_name, style_ref_number, description, points,
-      priority, deadline, drive_folder_link, assigned_to, created_by, status,
+      priority, deadline, drive_folder_link, assigned_to, assigned_at, created_by, status,
       customer_project_no, speed, customer_code, category_code, complexity,
       work_type, version, sr_no, cd_project_no, request_date, reference_image
     ) VALUES (
       ${title}, ${clientName}, ${styleRefNumber}, ${description},
       ${points}, ${priority}, ${deadline}, ${driveFolderLink},
-      ${assignedTo}, ${session.id}, 'assigned',
+      ${assignedTo}, ${assignedAtValue}, ${session.id}, 'assigned',
       ${customerProjectNo}, ${speed}, ${customerCode}, ${categoryCode}, ${complexity},
       ${workType}, ${version}, ${srNo}, ${cdProjectNo}, ${requestDate}, ${referenceImageUrl}
     )

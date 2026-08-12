@@ -177,7 +177,7 @@ function AttendanceRow({
           {new Date(r.date).toLocaleDateString("en-IN", {
             weekday: "short",
             day: "numeric",
-            month: "short",
+            month: "long",
           })}
         </span>
         {/* Mobile-only status */}

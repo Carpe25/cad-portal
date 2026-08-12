@@ -213,7 +213,7 @@ async function PointsContent({
                 <span className="hidden text-xs text-muted-foreground lg:block">
                   {new Date(e.credited_at).toLocaleDateString("en-IN", {
                     day: "numeric",
-                    month: "short",
+                    month: "long",
                     year: "numeric",
                   })}
                 </span>
