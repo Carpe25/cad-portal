@@ -65,6 +65,7 @@ function getContentType(filename: string): string {
     ".zip": "application/zip",
     ".pdf": "application/pdf",
     ".txt": "text/plain",
+    ".db": "application/x-sqlite3",
   }
   return mimeTypes[ext] || "application/octet-stream"
 }
@@ -296,6 +297,7 @@ const ALLOWED_EXTENSIONS = new Set([
   ".obj",
   ".fbx",
   ".gcode",
+  ".db",
 ])
 
 const MAX_FILE_SIZE_BYTES = 1024 * 1024 * 1024 // 1 GB Max limit
