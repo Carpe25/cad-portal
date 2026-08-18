@@ -278,6 +278,48 @@ export async function uploadToReferenceStorage(
   return `/uploads/reference-images/${filename}`
 }
 
+export async function generateReferencePresignedUploadUrl({
+  filename,
+  fileSize,
+  contentType,
+}: {
+  filename: string
+  fileSize?: number
+  contentType?: string
+}): Promise<{
+  presignedUrl?: string
+  fileUrl: string
+  key: string
+  isFallback?: boolean
+}> {
+  const ext = path.extname(filename).toLowerCase()
+  const cleanBaseName = path.basename(filename, ext).replace(/[^a-zA-Z0-9_-]/g, "_")
+  const safeFilename = `${Date.now()}_${cleanBaseName}${ext}`
+  const key = `reference-images/${safeFilename}`
+  const finalContentType = contentType || getContentType(filename)
+
+  const config = getStorageConfig()
+
+  if (config && config.bucket) {
+    const { client, region, bucket } = config
+    const command = new PutObjectCommand({
+      Bucket: bucket,
+      Key: key,
+      ContentType: finalContentType,
+      ACL: "public-read",
+    })
+
+    const presignedUrl = await getSignedUrl(client, command, { expiresIn: 900 })
+    const fileUrl = `https://${bucket}.${region}.linodeobjects.com/${key}`
+
+    return { presignedUrl, fileUrl, key }
+  }
+
+  const relativePath = `/uploads/reference-images/${safeFilename}`
+  return { fileUrl: relativePath, key: relativePath, isFallback: true }
+}
+
+
 const ALLOWED_EXTENSIONS = new Set([
   ".3dm",
   ".stl",

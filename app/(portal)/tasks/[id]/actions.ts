@@ -417,8 +417,14 @@ export async function updateTaskAction(
     assignedTo = (data.get("assigned_to") as string) || null
     priority = speed === "U" ? "high" : "medium"
 
+    const preUploadedUrls = data.getAll("reference_image_url") as string[]
+    if (preUploadedUrls && preUploadedUrls.length > 0) {
+      newReferenceUrls.push(...preUploadedUrls.filter(Boolean))
+    }
+
     const imageFiles = data.getAll("reference_image") as File[]
     if (imageFiles.length > 0) {
+
       const { compressImage } = await import("@/lib/image-compress")
       const { uploadToReferenceStorage } = await import("@/lib/linode-storage")
       for (let i = 0; i < imageFiles.length; i++) {
@@ -460,7 +466,12 @@ export async function updateTaskAction(
     assignedTo = data.assigned_to || null
     priority = speed === "U" ? "high" : "medium"
 
+    if (data.referenceImageUrls && Array.isArray(data.referenceImageUrls)) {
+      newReferenceUrls.push(...data.referenceImageUrls.filter(Boolean))
+    }
+
     const base64List = data.referenceImageBase64s || (data.referenceImageBase64 ? [data.referenceImageBase64] : [])
+
     if (base64List.length > 0) {
       const { compressImage } = await import("@/lib/image-compress")
       const { uploadToReferenceStorage } = await import("@/lib/linode-storage")

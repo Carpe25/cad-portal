@@ -246,39 +246,100 @@ export function CreateTaskForm({
     setImagePreviews((prev) => prev.filter((_, i) => i !== index))
   }
 
-  // Submit handler using FormData to avoid large base64 React Server Action serialization issues
+  const [uploadStatus, setUploadStatus] = useState<string | null>(null)
+
+  // Direct upload of reference image files to Linode Object Storage via presigned URLs
+  async function uploadReferenceImagesDirectly(files: File[]): Promise<string[]> {
+    const uploadedUrls: string[] = []
+
+    for (let i = 0; i < files.length; i++) {
+      const file = files[i]
+      setUploadStatus(`Uploading reference image ${i + 1} of ${files.length}...`)
+
+      const presignedRes = await fetch("/api/tasks/reference-presigned-url", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          filename: file.name,
+          fileSize: file.size,
+          contentType: file.type || "image/jpeg",
+        }),
+      })
+
+      const presignedData = await presignedRes.json()
+
+      if (!presignedRes.ok || !presignedData.success) {
+        throw new Error(presignedData.error || `Failed to generate upload link for ${file.name}`)
+      }
+
+      if (presignedData.presignedUrl) {
+        const uploadRes = await fetch(presignedData.presignedUrl, {
+          method: "PUT",
+          body: file,
+          headers: {
+            "Content-Type": file.type || "application/octet-stream",
+          },
+        })
+
+        if (!uploadRes.ok) {
+          throw new Error(`Direct storage upload failed for ${file.name} (HTTP ${uploadRes.status})`)
+        }
+        uploadedUrls.push(presignedData.fileUrl)
+      } else if (presignedData.fileUrl) {
+        uploadedUrls.push(presignedData.fileUrl)
+      }
+    }
+
+    return uploadedUrls
+  }
+
   function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault()
     setError(null)
 
     startTransition(async () => {
-      const formData = new FormData()
-      formData.append("customer_project_no", customerProjectNo)
-      formData.append("speed", speed)
-      formData.append("customer_code", selectedCustomerCode)
-      formData.append("client_name", clientName)
-      formData.append("category_code", categoryCode)
-      formData.append("complexity", complexity)
-      formData.append("work_type", workType)
-      formData.append("version", versionInput)
-      formData.append("sr_no", srNoFormatted)
-      formData.append("cd_project_no", cdProjectNo)
-      formData.append("request_date", requestDate)
-      formData.append("assigned_to", assignedTo)
-      formData.append("priority", priority)
-      formData.append("description", description)
-      formData.append("points", points)
-      formData.append("deadline", deadline)
-      formData.append("drive_folder_link", driveLink)
+      try {
+        let uploadedUrls: string[] = []
+        if (selectedImageFiles.length > 0) {
+          uploadedUrls = await uploadReferenceImagesDirectly(selectedImageFiles)
+        }
 
-      selectedImageFiles.forEach((file) => {
-        formData.append("reference_image", file)
-      })
+        setUploadStatus("Saving task details...")
 
-      const result = await createTaskAction(formData)
-      if (result?.error) setError(result.error)
+        const formData = new FormData()
+        formData.append("customer_project_no", customerProjectNo)
+        formData.append("speed", speed)
+        formData.append("customer_code", selectedCustomerCode)
+        formData.append("client_name", clientName)
+        formData.append("category_code", categoryCode)
+        formData.append("complexity", complexity)
+        formData.append("work_type", workType)
+        formData.append("version", versionInput)
+        formData.append("sr_no", srNoFormatted)
+        formData.append("cd_project_no", cdProjectNo)
+        formData.append("request_date", requestDate)
+        formData.append("assigned_to", assignedTo)
+        formData.append("priority", priority)
+        formData.append("description", description)
+        formData.append("points", points)
+        formData.append("deadline", deadline)
+        formData.append("drive_folder_link", driveLink)
+
+        uploadedUrls.forEach((url) => {
+          formData.append("reference_image_url", url)
+        })
+
+        const result = await createTaskAction(formData)
+        if (result?.error) setError(result.error)
+      } catch (err: any) {
+        console.error("Task creation error:", err)
+        setError(err.message || "Failed to create task with uploaded images.")
+      } finally {
+        setUploadStatus(null)
+      }
     })
   }
+
 
   return (
     <Card className="shadow-xs border-border">
@@ -632,9 +693,10 @@ export function CreateTaskForm({
 
           <div className="mt-2 flex justify-end">
             <Button type="submit" disabled={isPending} className="w-full sm:w-auto">
-              {isPending ? "Creating Task..." : "Create Task"}
+              {isPending ? (uploadStatus || "Creating Task...") : "Create Task"}
             </Button>
           </div>
+
         </form>
       </CardContent>
     </Card>

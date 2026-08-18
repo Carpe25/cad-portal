@@ -105,7 +105,9 @@ export type CreateTaskPayload = {
   referenceImageBase64s?: string[] | null
   referenceImageBase64?: string | null
   referenceImageName?: string | null
+  referenceImageUrls?: string[] | null
 }
+
 
 export async function createTaskAction(data: CreateTaskPayload | FormData) {
   const session = await getSession()
@@ -213,8 +215,13 @@ export async function createTaskAction(data: CreateTaskPayload | FormData) {
   // 2. Initialize task folder in Linode Object Storage
   await createTaskFolderInStorage(taskId, title)
 
-  // 3. Upload reference images to Linode Object Storage under tasks/${taskId}/reference/
+  // 3. Collect reference images (both pre-uploaded presigned URLs and raw uploaded files)
   if (data instanceof FormData) {
+    const preUploadedUrls = data.getAll("reference_image_url") as string[]
+    if (preUploadedUrls && preUploadedUrls.length > 0) {
+      referenceUrls.push(...preUploadedUrls.filter(Boolean))
+    }
+
     const imageFiles = data.getAll("reference_image") as File[]
     for (let i = 0; i < imageFiles.length; i++) {
       const imageFile = imageFiles[i]
@@ -233,6 +240,10 @@ export async function createTaskAction(data: CreateTaskPayload | FormData) {
       }
     }
   } else {
+    if (data.referenceImageUrls && Array.isArray(data.referenceImageUrls)) {
+      referenceUrls.push(...data.referenceImageUrls.filter(Boolean))
+    }
+
     const base64List = data.referenceImageBase64s || (data.referenceImageBase64 ? [data.referenceImageBase64] : [])
     for (let i = 0; i < base64List.length; i++) {
       const b64 = base64List[i]
@@ -251,6 +262,7 @@ export async function createTaskAction(data: CreateTaskPayload | FormData) {
       }
     }
   }
+
 
   if (referenceUrls.length > 0) {
     referenceImageUrl = JSON.stringify(referenceUrls)

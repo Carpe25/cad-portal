@@ -274,42 +274,103 @@ export function EditTaskForm({
     setImagePreviews((prev) => prev.filter((_, i) => i !== index))
   }
 
+  const [uploadStatus, setUploadStatus] = useState<string | null>(null)
+
+  async function uploadReferenceImagesDirectly(files: File[]): Promise<string[]> {
+    const uploadedUrls: string[] = []
+
+    for (let i = 0; i < files.length; i++) {
+      const file = files[i]
+      setUploadStatus(`Uploading image ${i + 1} of ${files.length}...`)
+
+      const presignedRes = await fetch("/api/tasks/reference-presigned-url", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          filename: file.name,
+          fileSize: file.size,
+          contentType: file.type || "image/jpeg",
+        }),
+      })
+
+      const presignedData = await presignedRes.json()
+
+      if (!presignedRes.ok || !presignedData.success) {
+        throw new Error(presignedData.error || `Failed to generate upload link for ${file.name}`)
+      }
+
+      if (presignedData.presignedUrl) {
+        const uploadRes = await fetch(presignedData.presignedUrl, {
+          method: "PUT",
+          body: file,
+          headers: {
+            "Content-Type": file.type || "application/octet-stream",
+          },
+        })
+
+        if (!uploadRes.ok) {
+          throw new Error(`Direct storage upload failed for ${file.name} (HTTP ${uploadRes.status})`)
+        }
+        uploadedUrls.push(presignedData.fileUrl)
+      } else if (presignedData.fileUrl) {
+        uploadedUrls.push(presignedData.fileUrl)
+      }
+    }
+
+    return uploadedUrls
+  }
+
   function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault()
     setError(null)
 
     startTransition(async () => {
-      const formData = new FormData()
-      formData.append("customer_project_no", customerProjectNo)
-      formData.append("speed", speed)
-      formData.append("customer_code", selectedCustomerCode)
-      formData.append("client_name", clientName)
-      formData.append("category_code", categoryCode)
-      formData.append("complexity", complexity)
-      formData.append("work_type", workType)
-      formData.append("version", versionInput)
-      formData.append("sr_no", task.sr_no ?? "")
-      formData.append("cd_project_no", cdProjectNo)
-      formData.append("request_date", requestDate)
-      formData.append("assigned_to", assignedTo === "unassigned" ? "" : assignedTo)
-      formData.append("priority", speed === "U" ? "high" : priority)
-      formData.append("description", description)
-      formData.append("points", points)
-      formData.append("deadline", deadline)
-      formData.append("drive_folder_link", driveLink)
+      try {
+        let uploadedUrls: string[] = []
+        if (selectedImageFiles.length > 0) {
+          uploadedUrls = await uploadReferenceImagesDirectly(selectedImageFiles)
+        }
 
-      selectedImageFiles.forEach((file) => {
-        formData.append("reference_image", file)
-      })
+        setUploadStatus("Saving task changes...")
 
-      const result = await updateTaskAction(task.id, formData)
-      if (result?.error) {
-        setError(result.error)
-      } else {
-        router.push(`/tasks/${task.id}`)
+        const formData = new FormData()
+        formData.append("customer_project_no", customerProjectNo)
+        formData.append("speed", speed)
+        formData.append("customer_code", selectedCustomerCode)
+        formData.append("client_name", clientName)
+        formData.append("category_code", categoryCode)
+        formData.append("complexity", complexity)
+        formData.append("work_type", workType)
+        formData.append("version", versionInput)
+        formData.append("sr_no", task.sr_no ?? "")
+        formData.append("cd_project_no", cdProjectNo)
+        formData.append("request_date", requestDate)
+        formData.append("assigned_to", assignedTo === "unassigned" ? "" : assignedTo)
+        formData.append("priority", speed === "U" ? "high" : priority)
+        formData.append("description", description)
+        formData.append("points", points)
+        formData.append("deadline", deadline)
+        formData.append("drive_folder_link", driveLink)
+
+        uploadedUrls.forEach((url) => {
+          formData.append("reference_image_url", url)
+        })
+
+        const result = await updateTaskAction(task.id, formData)
+        if (result?.error) {
+          setError(result.error)
+        } else {
+          router.push(`/tasks/${task.id}`)
+        }
+      } catch (err: any) {
+        console.error("Task update error:", err)
+        setError(err.message || "Failed to update task with uploaded images.")
+      } finally {
+        setUploadStatus(null)
       }
     })
   }
+
 
   return (
     <Card className="shadow-xs border-border">
@@ -637,8 +698,9 @@ export function EditTaskForm({
             </Button>
             <Button type="submit" disabled={isPending} className="gap-2">
               <Save className="h-4 w-4" />
-              {isPending ? "Saving Changes..." : "Save Task Changes"}
+              {isPending ? (uploadStatus || "Saving Changes...") : "Save Task Changes"}
             </Button>
+
           </div>
         </form>
       </CardContent>
