@@ -278,6 +278,7 @@ export function CreateTaskForm({
           body: file,
           headers: {
             "Content-Type": file.type || "application/octet-stream",
+            "x-amz-acl": "public-read",
           },
         })
 
@@ -332,6 +333,9 @@ export function CreateTaskForm({
         const result = await createTaskAction(formData)
         if (result?.error) setError(result.error)
       } catch (err: any) {
+        if (err?.message === "NEXT_REDIRECT" || err?.digest?.startsWith?.("NEXT_REDIRECT")) {
+          throw err
+        }
         console.error("Task creation error:", err)
         setError(err.message || "Failed to create task with uploaded images.")
       } finally {
@@ -339,6 +343,7 @@ export function CreateTaskForm({
       }
     })
   }
+
 
 
   return (

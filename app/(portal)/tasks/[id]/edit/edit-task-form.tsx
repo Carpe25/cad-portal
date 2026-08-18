@@ -305,6 +305,7 @@ export function EditTaskForm({
           body: file,
           headers: {
             "Content-Type": file.type || "application/octet-stream",
+            "x-amz-acl": "public-read",
           },
         })
 
@@ -363,6 +364,9 @@ export function EditTaskForm({
           router.push(`/tasks/${task.id}`)
         }
       } catch (err: any) {
+        if (err?.message === "NEXT_REDIRECT" || err?.digest?.startsWith?.("NEXT_REDIRECT")) {
+          throw err
+        }
         console.error("Task update error:", err)
         setError(err.message || "Failed to update task with uploaded images.")
       } finally {
@@ -370,6 +374,7 @@ export function EditTaskForm({
       }
     })
   }
+
 
 
   return (
