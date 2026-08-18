@@ -14,6 +14,7 @@ import {
   AlertCircle,
   FileSpreadsheet,
   Filter,
+  Building2,
 } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { Input } from "@/components/ui/input"
@@ -70,12 +71,13 @@ export function KanbanBoard({
   tasks: KanbanTask[]
   designers: Designer[]
 }) {
-  const [viewMode, setViewMode] = useState<"stage" | "designer">("stage")
+  const [viewMode, setViewMode] = useState<"stage" | "designer" | "customer">("stage")
   const [searchQuery, setSearchQuery] = useState("")
 
   // Mobile selection states
   const [selectedStage, setSelectedStage] = useState<string>("all")
   const [selectedDesigner, setSelectedDesigner] = useState<string>("all")
+  const [selectedCustomer, setSelectedCustomer] = useState<string>("all")
 
   const filteredTasks = tasks.filter((t) => {
     if (!searchQuery.trim()) return true
@@ -96,15 +98,19 @@ export function KanbanBoard({
     tasks: filteredTasks.filter((t) => t.status === stage.key),
   }))
 
-  // Grouping by designer
-  const unassignedTasks = filteredTasks.filter(
+  // Grouping by designer (EXCLUDE CLOSED TASKS for designer view as requested)
+  const nonClosedTasksForDesigners = filteredTasks.filter(
+    (t) => t.status !== "closed"
+  )
+
+  const unassignedTasks = nonClosedTasksForDesigners.filter(
     (t) => !t.assigned_to || t.assigned_to === ""
   )
 
   const tasksByDesigner = designers.map((d) => ({
     id: d.id,
     name: d.name,
-    tasks: filteredTasks.filter((t) => t.assigned_to === d.id),
+    tasks: nonClosedTasksForDesigners.filter((t) => t.assigned_to === d.id),
   }))
 
   if (unassignedTasks.length > 0) {
@@ -114,6 +120,28 @@ export function KanbanBoard({
       tasks: unassignedTasks,
     })
   }
+
+  // Grouping by customer
+  const customerMap = new Map<string, KanbanTask[]>()
+  filteredTasks.forEach((task) => {
+    const clientName = task.client_name?.trim() || "Unspecified Customer"
+    if (!customerMap.has(clientName)) {
+      customerMap.set(clientName, [])
+    }
+    customerMap.get(clientName)!.push(task)
+  })
+
+  const sortedCustomerNames = Array.from(customerMap.keys()).sort((a, b) => {
+    if (a === "Unspecified Customer") return 1
+    if (b === "Unspecified Customer") return -1
+    return a.localeCompare(b)
+  })
+
+  const tasksByCustomer = sortedCustomerNames.map((name) => ({
+    id: name,
+    name: name,
+    tasks: customerMap.get(name) || [],
+  }))
 
   // Active columns to render based on mobile filter selection or full desktop view
   const visibleStageColumns =
@@ -126,13 +154,18 @@ export function KanbanBoard({
       ? tasksByDesigner
       : tasksByDesigner.filter((col) => col.id === selectedDesigner)
 
+  const visibleCustomerColumns =
+    selectedCustomer === "all"
+      ? tasksByCustomer
+      : tasksByCustomer.filter((col) => col.id === selectedCustomer)
+
   return (
     <div className="space-y-4">
       {/* Header controls toolbar */}
       <div className="flex flex-col gap-3">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div className="flex flex-wrap items-center gap-2">
-            {/* View Switcher: By Stage / By Designer */}
+            {/* View Switcher: By Stage / By Designer / By Customer */}
             <div className="inline-flex rounded-lg border border-border bg-muted/50 p-1">
               <button
                 suppressHydrationWarning
@@ -158,10 +191,24 @@ export function KanbanBoard({
                 <User className="h-3.5 w-3.5" />
                 By Designer
               </button>
+              <button
+                suppressHydrationWarning
+                onClick={() => setViewMode("customer")}
+                className={`inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-semibold transition-all ${
+                  viewMode === "customer"
+                    ? "bg-background text-foreground shadow-xs"
+                    : "text-muted-foreground hover:text-foreground"
+                }`}
+              >
+                <Building2 className="h-3.5 w-3.5" />
+                By Customer
+              </button>
             </div>
 
             <span className="text-xs font-medium text-muted-foreground">
-              {filteredTasks.length} {filteredTasks.length === 1 ? "task" : "tasks"}
+              {viewMode === "designer"
+                ? `${nonClosedTasksForDesigners.length} active ${nonClosedTasksForDesigners.length === 1 ? "task" : "tasks"}`
+                : `${filteredTasks.length} ${filteredTasks.length === 1 ? "task" : "tasks"}`}
             </span>
           </div>
 
@@ -170,7 +217,7 @@ export function KanbanBoard({
             <Search className="absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
             <Input
               suppressHydrationWarning
-              placeholder="Search tasks or designers..."
+              placeholder="Search tasks, designers, or customers..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               className="h-8.5 pl-8 text-xs"
@@ -178,7 +225,7 @@ export function KanbanBoard({
           </div>
         </div>
 
-        {/* Mobile Column Selectors (visible on mobile screens, optional on desktop for quick filtering) */}
+        {/* Mobile Column Selectors */}
         <div className="flex items-center gap-2 sm:hidden">
           <Filter className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
           {viewMode === "stage" ? (
@@ -196,14 +243,14 @@ export function KanbanBoard({
                 </option>
               ))}
             </select>
-          ) : (
+          ) : viewMode === "designer" ? (
             <select
               value={selectedDesigner}
               onChange={(e) => setSelectedDesigner(e.target.value)}
               className="h-9 w-full rounded-lg border border-border bg-card px-3 text-xs font-semibold text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
             >
               <option value="all">
-                All Designers ({filteredTasks.length})
+                All Designers ({nonClosedTasksForDesigners.length})
               </option>
               {tasksByDesigner.map((d) => (
                 <option key={d.id} value={d.id}>
@@ -211,14 +258,26 @@ export function KanbanBoard({
                 </option>
               ))}
             </select>
+          ) : (
+            <select
+              value={selectedCustomer}
+              onChange={(e) => setSelectedCustomer(e.target.value)}
+              className="h-9 w-full rounded-lg border border-border bg-card px-3 text-xs font-semibold text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
+            >
+              <option value="all">
+                All Customers ({filteredTasks.length})
+              </option>
+              {tasksByCustomer.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.name} ({c.tasks.length})
+                </option>
+              ))}
+            </select>
           )}
         </div>
       </div>
 
-      {/* Kanban Board Container:
-          - Mobile: Vertical stack without horizontal scrolling (`flex flex-col gap-4 w-full`)
-          - Desktop (sm+ & 4K): Responsive Grid layout (`grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-4 w-full`)
-      */}
+      {/* Kanban Board Container */}
       <div className="w-full overflow-x-auto pb-3">
         {viewMode === "stage" ? (
           <div className="flex flex-col gap-4 w-full sm:grid sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-6 min-w-[760px] xl:min-w-0">
@@ -233,7 +292,7 @@ export function KanbanBoard({
               />
             ))}
           </div>
-        ) : (
+        ) : viewMode === "designer" ? (
           <div className="flex flex-col gap-4 w-full sm:grid sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-6">
             {visibleDesignerColumns.map((column) => (
               <KanbanColumn
@@ -247,6 +306,19 @@ export function KanbanBoard({
                 }
                 tasks={column.tasks}
                 viewMode="designer"
+              />
+            ))}
+          </div>
+        ) : (
+          <div className="flex flex-col gap-4 w-full sm:grid sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-6">
+            {visibleCustomerColumns.map((column) => (
+              <KanbanColumn
+                key={column.id}
+                title={column.name}
+                count={column.tasks.length}
+                headerBadgeClass="border-emerald-500/30 text-emerald-600 dark:text-emerald-400 bg-emerald-500/10"
+                tasks={column.tasks}
+                viewMode="customer"
               />
             ))}
           </div>
@@ -267,16 +339,18 @@ function KanbanColumn({
   count: number
   headerBadgeClass: string
   tasks: KanbanTask[]
-  viewMode: "stage" | "designer"
+  viewMode: "stage" | "designer" | "customer"
 }) {
   return (
     <div className="flex w-full shrink-0 flex-col rounded-xl border border-border/80 bg-muted/20">
       {/* Column Header */}
       <div className="flex items-center justify-between border-b border-border/60 px-3.5 py-3">
-        <div className="flex items-center gap-2">
-          <span className="text-xs font-semibold text-foreground">{title}</span>
+        <div className="flex items-center gap-2 min-w-0">
+          <span className="text-xs font-semibold text-foreground truncate" title={title}>
+            {title}
+          </span>
           <span
-            className={`inline-flex h-5 min-w-5 items-center justify-center rounded-full border px-1.5 text-[11px] font-bold ${headerBadgeClass}`}
+            className={`inline-flex h-5 min-w-5 shrink-0 items-center justify-center rounded-full border px-1.5 text-[11px] font-bold ${headerBadgeClass}`}
           >
             {count}
           </span>
@@ -304,7 +378,7 @@ function TaskCard({
   viewMode,
 }: {
   task: KanbanTask
-  viewMode: "stage" | "designer"
+  viewMode: "stage" | "designer" | "customer"
 }) {
   return (
     <Link
@@ -334,8 +408,8 @@ function TaskCard({
           {task.customer_project_no || task.title}
         </h4>
 
-        {/* Client Name if present */}
-        {task.client_name && (
+        {/* Client Name if present (hide in customer view as column title already shows client) */}
+        {viewMode !== "customer" && task.client_name && (
           <p className="mt-0.5 truncate text-[11px] text-muted-foreground">
             {task.client_name}
           </p>
@@ -344,10 +418,6 @@ function TaskCard({
 
       {/* Bottom Metadata & Badges */}
       <div className="mt-3 flex flex-wrap items-center justify-between gap-1.5 border-t border-border/40 pt-2 text-[11px] text-muted-foreground min-w-0 max-w-full">
-        {/* VIEW SPECIFIC BADGE:
-            If in Designer mode: Show Stage/Status badge
-            If in Stage mode: Show Assigned Designer name badge
-        */}
         {viewMode === "designer" ? (
           <Badge
             variant="outline"
@@ -357,6 +427,21 @@ function TaskCard({
           >
             {STATUS_LABELS_FULL[task.status] ?? STATUS_LABELS[task.status] ?? task.status}
           </Badge>
+        ) : viewMode === "customer" ? (
+          <div className="flex items-center gap-1.5 min-w-0 max-w-full truncate text-xs">
+            <User className="h-3 w-3 shrink-0 text-muted-foreground" />
+            <span className="truncate text-foreground/80 font-medium">
+              {task.designer_name || "Unassigned"}
+            </span>
+            <Badge
+              variant="outline"
+              className={`text-[10px] px-1.5 py-0 font-medium shrink-0 ${
+                STATUS_COLORS[task.status] ?? ""
+              }`}
+            >
+              {STATUS_LABELS[task.status] ?? task.status}
+            </Badge>
+          </div>
         ) : (
           <div className="flex items-center gap-1 min-w-0 max-w-full truncate text-xs">
             <User className="h-3 w-3 shrink-0 text-muted-foreground" />

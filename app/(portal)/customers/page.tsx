@@ -8,6 +8,8 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { PageHeader } from "@/components/portal/page-header"
 import { Building2 } from "lucide-react"
 
+import { EditCustomerButton } from "./edit-customer-button"
+
 type Customer = {
   uuid: string
   code: string
@@ -72,11 +74,12 @@ async function CustomersContent() {
       ) : (
         <div className="overflow-hidden rounded-xl border border-border bg-card shadow-xs">
           {/* Header */}
-          <div className="hidden items-center gap-4 border-b border-border bg-muted/30 px-4 py-2.5 text-xs font-medium text-muted-foreground md:grid md:grid-cols-[140px_minmax(0,1fr)_280px_160px]">
+          <div className="hidden items-center gap-4 border-b border-border bg-muted/30 px-4 py-2.5 text-xs font-medium text-muted-foreground md:grid md:grid-cols-[140px_minmax(0,1fr)_260px_140px_60px]">
             <span>Code</span>
             <span>Name</span>
             <span>UUID</span>
             <span>Date Added</span>
+            <span className="text-right">Actions</span>
           </div>
 
           {/* Rows */}
@@ -84,7 +87,7 @@ async function CustomersContent() {
             {customers.map((c) => (
               <div
                 key={c.uuid}
-                className="flex flex-col gap-2 px-4 py-3.5 transition-colors hover:bg-muted/40 md:grid md:grid-cols-[140px_minmax(0,1fr)_280px_160px] md:items-center md:gap-4"
+                className="flex flex-col gap-2 px-4 py-3.5 transition-colors hover:bg-muted/40 md:grid md:grid-cols-[140px_minmax(0,1fr)_260px_140px_60px] md:items-center md:gap-4"
               >
                 {/* Code */}
                 <div className="flex items-center gap-2">
@@ -114,6 +117,11 @@ async function CustomersContent() {
                     month: "long",
                     day: "numeric",
                   })}
+                </div>
+
+                {/* Edit Button */}
+                <div className="flex items-center justify-end">
+                  <EditCustomerButton customer={c} />
                 </div>
               </div>
             ))}

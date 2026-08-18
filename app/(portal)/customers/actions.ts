@@ -51,3 +51,42 @@ export async function addCustomerAction(formData: FormData) {
     return { error: err?.message || "Failed to create customer. Please try again." }
   }
 }
+
+export async function updateCustomerAction(uuid: string, formData: FormData) {
+  const session = await getSession()
+  if (!session) {
+    return { error: "Unauthorized" }
+  }
+
+  const code = (formData.get("code") as string)?.trim()
+  const name = (formData.get("name") as string)?.trim()
+
+  if (!uuid || !code || !name) {
+    return { error: "Code and Name are required" }
+  }
+
+  try {
+    await ensureCustomerTable()
+
+    // Check for duplicate code in other customers
+    const existing = await sql`
+      SELECT uuid FROM customer WHERE LOWER(code) = LOWER(${code}) AND uuid != ${uuid} LIMIT 1
+    `
+    if (existing.length > 0) {
+      return { error: `Customer with code "${code}" already exists` }
+    }
+
+    await sql`
+      UPDATE customer
+      SET code = ${code}, name = ${name}
+      WHERE uuid = ${uuid}
+    `
+
+    revalidatePath("/customers")
+    return { error: null }
+  } catch (err: any) {
+    console.error("Error updating customer:", err)
+    return { error: err?.message || "Failed to update customer. Please try again." }
+  }
+}
+

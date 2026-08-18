@@ -190,6 +190,11 @@ export default async function TaskDetailPage({
                   </Link>
                 </Button>
               )}
+              {task.sr_no && (
+                <Badge variant="outline" className="font-mono text-xs font-semibold border-primary/30 text-primary bg-primary/5">
+                  Sr. No: #{task.sr_no}
+                </Badge>
+              )}
               <Badge
                 variant="outline"
                 className={`capitalize ${PRIORITY_COLORS[task.priority] ?? ""}`}
@@ -215,6 +220,12 @@ export default async function TaskDetailPage({
                 Task Details
               </h2>
               <dl className="grid grid-cols-2 gap-x-6 gap-y-4 text-sm sm:grid-cols-4">
+                {task.sr_no && (
+                  <div>
+                    <dt className="text-xs text-muted-foreground">Serial No. (Sr. No.)</dt>
+                    <dd className="mt-0.5 font-mono font-semibold text-foreground">#{task.sr_no}</dd>
+                  </div>
+                )}
                 {canSeeCustomerName ? (
                   <div>
                     <dt className="text-xs text-muted-foreground">Customer</dt>
@@ -367,9 +378,14 @@ export default async function TaskDetailPage({
               {task.description && (
                 <>
                   <Separator className="my-4" />
-                  <p className="text-sm leading-relaxed text-muted-foreground">
-                    {task.description}
-                  </p>
+                  <div className="flex flex-col gap-1.5">
+                    <span className="text-xs font-semibold tracking-wider text-muted-foreground uppercase">
+                      Description / Work Notes
+                    </span>
+                    <p className="text-sm leading-relaxed text-foreground/90 whitespace-pre-wrap font-sans">
+                      {task.description}
+                    </p>
+                  </div>
                 </>
               )}
               {task.revision_notes && (
@@ -379,7 +395,7 @@ export default async function TaskDetailPage({
                     <p className="text-xs font-semibold text-amber-600 dark:text-amber-400">
                       Client Revision Notes
                     </p>
-                    <p className="mt-1 text-sm text-foreground">
+                    <p className="mt-1 text-sm text-foreground whitespace-pre-wrap font-sans">
                       {task.revision_notes}
                     </p>
                   </div>

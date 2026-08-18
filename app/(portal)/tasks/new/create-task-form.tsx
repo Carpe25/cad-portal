@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useTransition, ChangeEvent } from "react"
+import { useState, useTransition, useEffect, ChangeEvent, DragEvent } from "react"
 import { createTaskAction, createDriveFolderAction } from "./actions"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -15,7 +15,8 @@ import {
 } from "@/components/ui/select"
 import { Card, CardContent } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
-import { CalendarIcon, Image as ImageIcon, Sparkles, X, FolderPlus, Check } from "lucide-react"
+import { CalendarIcon, Image as ImageIcon, Sparkles, X, FolderPlus, Check, Upload } from "lucide-react"
+
 
 
 const CATEGORIES = [
@@ -239,6 +240,41 @@ export function CreateTaskForm({
     setSelectedImageFiles((prev) => [...prev, ...files])
     setImagePreviews((prev) => [...prev, ...newPreviews])
     e.target.value = ""
+  }
+
+  // Auto generate Project No based on Speed, Customer Code, Category Code, Serial No, Version
+  useEffect(() => {
+    setCdProjectNo(`${speed}${selectedCustomerCode}${categoryCode}${srNoFormatted}${versionInput}`)
+  }, [speed, selectedCustomerCode, categoryCode, srNoFormatted, versionInput])
+
+  // Drag and drop state for reference images
+  const [isDragging, setIsDragging] = useState(false)
+
+  const handleDragOver = (e: DragEvent<HTMLElement>) => {
+    e.preventDefault()
+    e.stopPropagation()
+    if (!isDragging) setIsDragging(true)
+  }
+
+  const handleDragLeave = (e: DragEvent<HTMLElement>) => {
+    e.preventDefault()
+    e.stopPropagation()
+    setIsDragging(false)
+  }
+
+  const handleDrop = (e: DragEvent<HTMLElement>) => {
+    e.preventDefault()
+    e.stopPropagation()
+    setIsDragging(false)
+
+    const files = Array.from(e.dataTransfer.files || []).filter((file) =>
+      file.type.startsWith("image/")
+    )
+    if (files.length === 0) return
+
+    const newPreviews = files.map((file) => URL.createObjectURL(file))
+    setSelectedImageFiles((prev) => [...prev, ...files])
+    setImagePreviews((prev) => [...prev, ...newPreviews])
   }
 
   const removeImagePreview = (index: number) => {
@@ -574,19 +610,30 @@ export function CreateTaskForm({
             </div>
           </div>
 
-          {/* Reference Image Upload Field */}
+          {/* Reference Image Upload Field with Drag & Drop */}
           <div className="flex flex-col gap-2">
             <Label htmlFor="reference_image">Reference Images</Label>
             <div className="flex flex-wrap items-start gap-4">
               <label
                 htmlFor="reference_image"
-                className="flex cursor-pointer flex-col items-center justify-center rounded-lg border-2 border-dashed border-muted-foreground/25 p-4 text-center hover:border-primary/50 hover:bg-muted/30 transition-colors w-full sm:w-auto min-w-[200px] min-h-[96px]"
+                onDragOver={handleDragOver}
+                onDragLeave={handleDragLeave}
+                onDrop={handleDrop}
+                className={`flex cursor-pointer flex-col items-center justify-center rounded-lg border-2 border-dashed p-4 text-center transition-all w-full sm:w-auto min-w-[220px] min-h-[100px] ${
+                  isDragging
+                    ? "border-primary bg-primary/10 ring-4 ring-primary/20 scale-[1.01]"
+                    : "border-muted-foreground/25 hover:border-primary/50 hover:bg-muted/30"
+                }`}
               >
-                <ImageIcon className="h-6 w-6 text-muted-foreground mb-1" />
+                {isDragging ? (
+                  <Upload className="h-7 w-7 text-primary mb-1 animate-bounce" />
+                ) : (
+                  <ImageIcon className="h-6 w-6 text-muted-foreground mb-1" />
+                )}
                 <span className="text-xs font-medium text-foreground">
-                  Upload Reference Images
+                  {isDragging ? "Drop images here..." : "Upload or Drag & Drop Images"}
                 </span>
-                <span className="text-[10px] text-muted-foreground">
+                <span className="text-[10px] text-muted-foreground mt-0.5">
                   PNG, JPG, WEBP up to 10MB (Multiple allowed)
                 </span>
                 <input
