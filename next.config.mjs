@@ -1,5 +1,6 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+  serverExternalPackages: ["sharp"],
   transpilePackages: [
     "@cometchat/chat-uikit-react",
     "@cometchat/chat-sdk-javascript",

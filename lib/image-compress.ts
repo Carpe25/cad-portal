@@ -1,8 +1,7 @@
-import sharp from "sharp"
-
 /**
  * Lossless/high-quality image compression helper using Sharp.
- * Reduces image file size before saving to disk.
+ * Lazily loads Sharp so native binary failures on serverless platforms (like Vercel)
+ * fall back gracefully to saving original images without throwing errors.
  */
 export async function compressImage(
   buffer: Buffer,
@@ -13,6 +12,9 @@ export async function compressImage(
   let ext = originalFilename ? originalFilename.slice(originalFilename.lastIndexOf(".")) || ".png" : ".png"
 
   try {
+    const sharpModule = await import("sharp")
+    const sharp = sharpModule.default || sharpModule
+
     const metadata = await sharp(buffer).metadata()
     const format = metadata.format
 
@@ -43,7 +45,7 @@ export async function compressImage(
       ext = ".png"
     }
   } catch (err) {
-    console.error("Error compressing image with sharp, saving original:", err)
+    console.error("Error compressing image with sharp, saving original image:", err)
   }
 
   const compressedSize = compressedBuffer.length
