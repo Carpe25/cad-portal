@@ -27,7 +27,6 @@ import {
 } from "@/components/ui/sidebar"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { TooltipProvider } from "@/components/ui/tooltip"
-import { ClockInButton } from "@/components/clock-in-button"
 import { LogoutButton } from "@/components/logout-button"
 import { SidebarNavItem } from "@/components/sidebar-nav-item"
 import type { SessionUser } from "@/lib/session"
@@ -151,17 +150,6 @@ export async function AppSidebar({ session }: { session: SessionUser }) {
   const navGroups = getNavItems(session.roles)
   const badge = getRoleBadge(session.roles)
 
-  const today = new Date().toISOString().split("T")[0]
-  const rows = await sql`
-    SELECT id, login_at, logout_at FROM attendance
-    WHERE user_id = ${session.id} AND date = ${today}
-    LIMIT 1
-  `
-  const todayAttendance = rows[0] as
-    | { id: string; login_at: string; logout_at: string | null }
-    | undefined
-  const isClockedIn = !!todayAttendance && !todayAttendance.logout_at
-
   const initials = session.name
     .split(" ")
     .slice(0, 2)
@@ -231,13 +219,6 @@ export async function AppSidebar({ session }: { session: SessionUser }) {
 
       {/* Footer */}
       <SidebarFooter className="px-3 py-3">
-        <ClockInButton
-          isClockedIn={isClockedIn}
-          attendanceId={todayAttendance?.id}
-        />
-
-        <SidebarSeparator className="mx-auto" />
-
         <TooltipProvider delayDuration={300}>
           <div className="flex items-center gap-2.5">
             <Avatar className="h-8 w-8 shrink-0">

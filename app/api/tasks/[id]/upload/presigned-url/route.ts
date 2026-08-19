@@ -21,13 +21,20 @@ export async function POST(
 
     // 2. Database Task Existence & RBAC Authorization Check
     const taskRows = await sql`
-      SELECT id, assigned_to, status FROM tasks WHERE id = ${taskId}
+      SELECT id, assigned_to, status, cd_project_no, customer_project_no, sr_no FROM tasks WHERE id = ${taskId}
     `
     if (!taskRows.length) {
       return NextResponse.json({ error: "Task not found" }, { status: 404 })
     }
 
-    const task = taskRows[0] as { id: string; assigned_to: string | null; status: string }
+    const task = taskRows[0] as {
+      id: string
+      assigned_to: string | null
+      status: string
+      cd_project_no: string | null
+      customer_project_no: string | null
+      sr_no: string | null
+    }
     const isManager = session.roles.includes("manager")
     const isQC = session.roles.includes("qc")
     const isDesigner = session.roles.includes("designer")
@@ -55,9 +62,20 @@ export async function POST(
     const count = Number((countRows[0] as { count: string | number }).count)
     const version = `V${count + 1}`
 
-    // 4. Generate Presigned URL with security validations
+    const folderParts = [
+      task.cd_project_no,
+      task.customer_project_no,
+      task.sr_no,
+      version,
+    ].map((s) => (s || "").trim()).filter(Boolean)
+    const folderName = folderParts.length > 0 ? folderParts.join("-") : taskId
+
+    // 4. Generate Presigned URL with security validations & formatted filename
     const result = await generatePresignedUploadUrl({
       taskId,
+      folderName,
+      cdProjectNo: task.cd_project_no,
+      customerProjectNo: task.customer_project_no,
       category: "cad",
       version,
       filename,

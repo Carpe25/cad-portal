@@ -4,7 +4,7 @@ import { redirect } from "next/navigation"
 import { revalidatePath } from "next/cache"
 import { sql } from "@/lib/db"
 import { getSession } from "@/lib/session"
-import { normalizeDeadlineForDb, normalizeRequestDateForDb } from "@/lib/task-utils"
+import { normalizeDeadlineForDb, normalizeRequestDateForDb, isVersionV2OrHigher } from "@/lib/task-utils"
 
 export async function assignToMeAction(taskId: string) {
   try {
@@ -289,7 +289,7 @@ export async function closeTaskAction(taskId: string) {
   if (!session || !session.roles.includes("manager"))
     return { error: "Unauthorized" }
 
-  await sql`UPDATE tasks SET status = 'closed' WHERE id = ${taskId}`
+  await sql`UPDATE tasks SET status = 'closed', closed_at = NOW() WHERE id = ${taskId}`
   revalidatePath(`/tasks/${taskId}`)
   revalidatePath("/tasks")
 }
@@ -328,7 +328,7 @@ export async function reopenForClientRevisionAction(
   await sql`
     UPDATE tasks
     SET
-      status = 'assigned',
+      status = 'revision_requested',
       revision_notes = ${revisionNotes},
       points = ${newPoints},
       assigned_to = ${newDesignerId},
@@ -356,7 +356,7 @@ export async function updateTaskAction(
   // Fetch current task info to check if assigned_to is changing
   const cleanId = decodeURIComponent(taskId.trim())
   const currentTaskRows = await sql`
-    SELECT id, assigned_to, assigned_at, reference_image FROM tasks
+    SELECT id, status, assigned_to, assigned_at, reference_image FROM tasks
     WHERE LOWER(id::text) = LOWER(${cleanId})
        OR LOWER(readable_id) = LOWER(${cleanId})
        OR REPLACE(id::text, '-', '') = LOWER(REPLACE(${cleanId}, '-', ''))
@@ -366,6 +366,7 @@ export async function updateTaskAction(
   }
   const currentTask = currentTaskRows[0] as {
     id: string
+    status: string
     assigned_to: string | null
     assigned_at: string | null
     reference_image: string | null
@@ -522,6 +523,9 @@ export async function updateTaskAction(
     }
   }
 
+  const shouldPromoteToRevision = isVersionV2OrHigher(version) && currentTask.status === "assigned"
+  const newStatus = shouldPromoteToRevision ? "revision_requested" : currentTask.status
+
   await sql`
     UPDATE tasks
     SET
@@ -535,6 +539,7 @@ export async function updateTaskAction(
       drive_folder_link = ${driveFolderLink},
       assigned_to = ${targetAssignedTo},
       assigned_at = ${assignedAtSql},
+      status = ${newStatus},
       customer_project_no = ${customerProjectNo},
       speed = ${speed},
       customer_code = ${customerCode},

@@ -304,6 +304,22 @@ export function normalizeRequestDateForDb(dateStr: string | null | undefined): s
   return `${year}-${month}-${day}`
 }
 
+/**
+ * Checks if a version string represents Version 2 or higher (e.g. V2, V3, V4...).
+ */
+export function isVersionV2OrHigher(version?: string | null): boolean {
+  if (!version) return false
+  const cleaned = version.trim().toUpperCase()
+  if (cleaned === "V1" || cleaned === "1" || cleaned === "V0" || cleaned === "V01") return false
+  const match = cleaned.match(/^V?(\d+)/)
+  if (match) {
+    const num = parseInt(match[1], 10)
+    return num >= 2
+  }
+  return cleaned !== "V1"
+}
+
+
 
 
 

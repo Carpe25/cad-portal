@@ -3,7 +3,7 @@
 import { redirect } from "next/navigation"
 import { sql } from "@/lib/db"
 import { getSession } from "@/lib/session"
-import { normalizeDeadlineForDb } from "@/lib/task-utils"
+import { normalizeDeadlineForDb, isVersionV2OrHigher } from "@/lib/task-utils"
 import fs from "fs"
 import path from "path"
 
@@ -24,7 +24,8 @@ export async function ensureTaskTableColumns() {
     ADD COLUMN IF NOT EXISTS cd_project_no TEXT,
     ADD COLUMN IF NOT EXISTS request_date DATE,
     ADD COLUMN IF NOT EXISTS reference_image TEXT,
-    ADD COLUMN IF NOT EXISTS assigned_at TIMESTAMPTZ;
+    ADD COLUMN IF NOT EXISTS assigned_at TIMESTAMPTZ,
+    ADD COLUMN IF NOT EXISTS closed_at TIMESTAMPTZ;
   `
   try {
     await sql`ALTER TABLE tasks ALTER COLUMN points TYPE NUMERIC(10,2) USING points::numeric;`
@@ -192,6 +193,7 @@ export async function createTaskAction(data: CreateTaskPayload | FormData) {
   }
 
   const assignedAtValue = assignedTo ? new Date().toISOString() : null
+  const initialStatus = isVersionV2OrHigher(version) ? "revision_requested" : "assigned"
 
   // 1. Insert task record to obtain taskId
   const rows = await sql`
@@ -203,7 +205,7 @@ export async function createTaskAction(data: CreateTaskPayload | FormData) {
     ) VALUES (
       ${title}, ${clientName}, ${styleRefNumber}, ${description},
       ${points}, ${priority}, ${deadline}, ${driveFolderLink},
-      ${assignedTo}, ${assignedAtValue}, ${session.id}, 'assigned',
+      ${assignedTo}, ${assignedAtValue}, ${session.id}, ${initialStatus},
       ${customerProjectNo}, ${speed}, ${customerCode}, ${categoryCode}, ${complexity},
       ${workType}, ${version}, ${srNo}, ${cdProjectNo}, ${requestDate}, NULL
     )
@@ -212,8 +214,17 @@ export async function createTaskAction(data: CreateTaskPayload | FormData) {
 
   const taskId = (rows[0] as { id: string }).id
 
-  // 2. Initialize task folder in Linode Object Storage
-  await createTaskFolderInStorage(taskId, title)
+  // 2. Initialize task folder in Linode Object Storage using format: project_no-customer_project_no-serial_no-version
+  const linodeFolderParts = [
+    cdProjectNo,
+    customerProjectNo,
+    srNo,
+    version,
+  ].map((s) => (s || "").trim()).filter(Boolean)
+
+  const linodeFolderName = linodeFolderParts.length > 0 ? linodeFolderParts.join("-") : title
+
+  await createTaskFolderInStorage(taskId, linodeFolderName)
 
   // 3. Collect reference images (both pre-uploaded presigned URLs and raw uploaded files)
   if (data instanceof FormData) {

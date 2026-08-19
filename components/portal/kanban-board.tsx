@@ -107,11 +107,13 @@ export function KanbanBoard({
     (t) => !t.assigned_to || t.assigned_to === ""
   )
 
-  const tasksByDesigner = designers.map((d) => ({
-    id: d.id,
-    name: d.name,
-    tasks: nonClosedTasksForDesigners.filter((t) => t.assigned_to === d.id),
-  }))
+  const tasksByDesigner = designers
+    .map((d) => ({
+      id: d.id,
+      name: d.name,
+      tasks: nonClosedTasksForDesigners.filter((t) => t.assigned_to === d.id),
+    }))
+    .filter((d) => d.tasks.length > 0)
 
   if (unassignedTasks.length > 0) {
     tasksByDesigner.unshift({
@@ -220,7 +222,7 @@ export function KanbanBoard({
               placeholder="Search tasks, designers, or customers..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="h-8.5 pl-8 text-xs"
+              className="h-8.5 pl-8 text-xs border-2 border-black dark:border-slate-300"
             />
           </div>
         </div>

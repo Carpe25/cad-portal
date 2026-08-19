@@ -75,7 +75,8 @@ export async function createTaskFolderInStorage(
   folderName?: string
 ): Promise<{ key: string; url: string }> {
   const config = getStorageConfig()
-  const key = `tasks/${taskId}/.keep`
+  const targetFolder = folderName ? folderName.replace(/[^a-zA-Z0-9_.-]/g, "_") : taskId
+  const key = `tasks/${targetFolder}/.keep`
 
   if (config && config.bucket) {
     const { client, region, bucket } = config
@@ -84,11 +85,22 @@ export async function createTaskFolderInStorage(
         new PutObjectCommand({
           Bucket: bucket,
           Key: key,
-          Body: Buffer.from(`Task folder initialized for ID: ${taskId}${folderName ? ` (${folderName})` : ""}`),
+          Body: Buffer.from(`Task folder initialized: ${targetFolder} (ID: ${taskId})`),
           ContentType: "text/plain",
           ACL: "public-read",
         })
       )
+      if (targetFolder !== taskId) {
+        await client.send(
+          new PutObjectCommand({
+            Bucket: bucket,
+            Key: `tasks/${taskId}/.keep`,
+            Body: Buffer.from(`Task folder initialized: ${targetFolder} (ID: ${taskId})`),
+            ContentType: "text/plain",
+            ACL: "public-read",
+          })
+        ).catch(() => {})
+      }
       const url = `https://${bucket}.${region}.linodeobjects.com/${key}`
       return { url, key }
     } catch (err) {
@@ -97,11 +109,11 @@ export async function createTaskFolderInStorage(
   }
 
   // Fallback local storage directory creation
-  const uploadDir = path.join(process.cwd(), "public", "uploads", "tasks", taskId)
+  const uploadDir = path.join(process.cwd(), "public", "uploads", "tasks", targetFolder)
   if (!fs.existsSync(uploadDir)) {
     fs.mkdirSync(uploadDir, { recursive: true })
   }
-  const relativePath = `/uploads/tasks/${taskId}/.keep`
+  const relativePath = `/uploads/tasks/${targetFolder}/.keep`
   return { url: relativePath, key: relativePath }
 }
 
@@ -165,39 +177,50 @@ export async function uploadTaskFile({
   return { url: relativePath, key: relativePath }
 }
 
-export async function listTaskFiles(taskId: string) {
+export async function listTaskFiles(taskId: string, folderName?: string) {
   const config = getStorageConfig()
   if (!config || !config.bucket) return []
 
   const { client, region, bucket } = config
-  const prefix = `tasks/${taskId}/`
-
-  try {
-    const response = await client.send(
-      new ListObjectsV2Command({
-        Bucket: bucket,
-        Prefix: prefix,
-      })
-    )
-
-    if (!response.Contents) return []
-
-    return response.Contents.map((item) => {
-      const key = item.Key || ""
-      const filename = path.basename(key)
-      const url = `https://${bucket}.${region}.linodeobjects.com/${key}`
-      return {
-        key,
-        filename,
-        size: item.Size || 0,
-        lastModified: item.LastModified,
-        url,
-      }
-    })
-  } catch (err) {
-    console.error("Error listing task files from Linode S3:", err)
-    return []
+  const prefixes = [`tasks/${taskId}/`]
+  if (folderName && folderName !== taskId) {
+    prefixes.unshift(`tasks/${folderName}/`)
   }
+
+  const allFiles: Array<{ key: string; filename: string; size: number; lastModified?: Date; url: string }> = []
+  const seenKeys = new Set<string>()
+
+  for (const prefix of prefixes) {
+    try {
+      const response = await client.send(
+        new ListObjectsV2Command({
+          Bucket: bucket,
+          Prefix: prefix,
+        })
+      )
+
+      if (response.Contents) {
+        for (const item of response.Contents) {
+          const key = item.Key || ""
+          if (!key || key.endsWith("/.keep") || seenKeys.has(key)) continue
+          seenKeys.add(key)
+          const filename = path.basename(key)
+          const url = `https://${bucket}.${region}.linodeobjects.com/${key}`
+          allFiles.push({
+            key,
+            filename,
+            size: item.Size || 0,
+            lastModified: item.LastModified,
+            url,
+          })
+        }
+      }
+    } catch (err) {
+      console.error(`Error listing task files from Linode S3 prefix ${prefix}:`, err)
+    }
+  }
+
+  return allFiles
 }
 
 export async function getTaskFileStream(key: string) {
@@ -351,6 +374,9 @@ export async function generatePresignedUploadUrl({
   filename,
   fileSize,
   contentType,
+  folderName,
+  cdProjectNo,
+  customerProjectNo,
 }: {
   taskId: string
   category?: TaskFileCategory
@@ -358,6 +384,9 @@ export async function generatePresignedUploadUrl({
   filename: string
   fileSize?: number
   contentType?: string
+  folderName?: string
+  cdProjectNo?: string | null
+  customerProjectNo?: string | null
 }): Promise<{
   presignedUrl?: string
   fileUrl: string
@@ -378,18 +407,36 @@ export async function generatePresignedUploadUrl({
     )
   }
 
-  // 3. Filename Sanitization & Path Traversal Prevention
+  // 3. Filename Sanitization & Formatting (project_no - customer_project_no - version)
   const baseNameWithoutExt = path.basename(filename, ext)
   const cleanBaseName = baseNameWithoutExt.replace(/[^a-zA-Z0-9_-]/g, "_")
-  const cleanFilename = `${cleanBaseName}${ext}`
 
-  const keyParts = ["tasks", taskId, category]
+  const nameParts = [
+    cdProjectNo,
+    customerProjectNo,
+    version,
+  ].map((s) => (s || "").trim()).filter(Boolean)
+
+  let formattedFilename: string
+  if (nameParts.length > 0) {
+    const formattedPrefix = nameParts.join("-")
+    if (cleanBaseName.startsWith(formattedPrefix)) {
+      formattedFilename = `${cleanBaseName}${ext}`
+    } else {
+      formattedFilename = `${formattedPrefix}_${cleanBaseName}${ext}`
+    }
+  } else {
+    formattedFilename = `${cleanBaseName}${ext}`
+  }
+
+  const targetFolder = folderName ? folderName.replace(/[^a-zA-Z0-9_.-]/g, "_") : taskId
+  const keyParts = ["tasks", targetFolder, category]
   if (version) keyParts.push(version)
   const timePrefix = Date.now()
-  keyParts.push(`${timePrefix}_${cleanFilename}`)
+  keyParts.push(`${timePrefix}_${formattedFilename}`)
   const key = keyParts.join("/")
 
-  const finalContentType = contentType || getContentType(cleanFilename)
+  const finalContentType = contentType || getContentType(formattedFilename)
 
   const config = getStorageConfig()
 
@@ -410,7 +457,7 @@ export async function generatePresignedUploadUrl({
   }
 
   // Fallback for local development environment if Linode Object Storage is not configured
-  const relativePath = `/uploads/tasks/${taskId}/${category}/${version ? version + "/" : ""}${cleanFilename}`
+  const relativePath = `/uploads/tasks/${taskId}/${category}/${version ? version + "/" : ""}${formattedFilename}`
   return {
     fileUrl: relativePath,
     key: relativePath,

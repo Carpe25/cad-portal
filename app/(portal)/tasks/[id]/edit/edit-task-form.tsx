@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useTransition, ChangeEvent } from "react"
+import { useState, useTransition, ChangeEvent, useEffect } from "react"
 import { useRouter } from "next/navigation"
 import { updateTaskAction } from "../actions"
 import { createDriveFolderAction } from "@/app/(portal)/tasks/new/actions"
@@ -268,6 +268,83 @@ export function EditTaskForm({
     setImagePreviews((prev) => [...prev, ...newPreviews])
     e.target.value = ""
   }
+
+  // Handle pasted images (copied from browser, screenshot, or clipboard)
+  const handlePasteImages = (e: React.ClipboardEvent | ClipboardEvent) => {
+    const clipboardData = "clipboardData" in e ? e.clipboardData : null
+    if (!clipboardData) return
+
+    const items = clipboardData.items
+    const filesFromClipboard: File[] = []
+
+    if (items) {
+      for (let i = 0; i < items.length; i++) {
+        const item = items[i]
+        if (item.type.startsWith("image/")) {
+          const file = item.getAsFile()
+          if (file) {
+            filesFromClipboard.push(file)
+          }
+        }
+      }
+    }
+
+    if (filesFromClipboard.length === 0 && clipboardData.files?.length) {
+      const files = Array.from(clipboardData.files).filter((file) =>
+        file.type.startsWith("image/")
+      )
+      filesFromClipboard.push(...files)
+    }
+
+    if (filesFromClipboard.length > 0) {
+      const activeEl = document.activeElement
+      const isInputText = activeEl && (activeEl.tagName === "INPUT" || activeEl.tagName === "TEXTAREA")
+      if (!isInputText || activeEl.getAttribute("type") === "file") {
+        e.preventDefault()
+      }
+      const newPreviews = filesFromClipboard.map((file) => URL.createObjectURL(file))
+      setSelectedImageFiles((prev) => [...prev, ...filesFromClipboard])
+      setImagePreviews((prev) => [...prev, ...newPreviews])
+      return
+    }
+
+    const pastedText = clipboardData.getData("text")?.trim()
+    if (
+      pastedText &&
+      (pastedText.startsWith("data:image/") ||
+        pastedText.match(/^https?:\/\/.*\.(png|jpg|jpeg|webp|gif|svg)(\?.*)?$/i))
+    ) {
+      const activeEl = document.activeElement
+      const isInputText = activeEl && (activeEl.tagName === "INPUT" || activeEl.tagName === "TEXTAREA")
+      if (!isInputText || activeEl.getAttribute("type") === "file") {
+        e.preventDefault()
+      }
+      fetch(pastedText)
+        .then((res) => res.blob())
+        .then((blob) => {
+          const ext = blob.type.split("/")[1] || "png"
+          const file = new File([blob], `pasted_image_${Date.now()}.${ext}`, {
+            type: blob.type || "image/png",
+          })
+          const preview = URL.createObjectURL(file)
+          setSelectedImageFiles((prev) => [...prev, file])
+          setImagePreviews((prev) => [...prev, preview])
+        })
+        .catch((err) => {
+          console.error("Failed to convert pasted image URL to file:", err)
+        })
+    }
+  }
+
+  useEffect(() => {
+    const onWindowPaste = (e: ClipboardEvent) => {
+      handlePasteImages(e)
+    }
+    window.addEventListener("paste", onWindowPaste)
+    return () => {
+      window.removeEventListener("paste", onWindowPaste)
+    }
+  }, [])
 
   const removeImagePreview = (index: number) => {
     setSelectedImageFiles((prev) => prev.filter((_, i) => i !== index))

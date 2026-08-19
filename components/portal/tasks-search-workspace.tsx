@@ -242,7 +242,7 @@ export function TasksSearchWorkspace({
             placeholder="Search by Project No (e.g. CD...), Customer Project No, Client, or Title..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            className="h-10 border-border/60 bg-background/50 pl-10 pr-9 text-sm transition-all focus:bg-background"
+            className="h-10 border-2 border-black dark:border-slate-300 bg-background/50 pl-10 pr-9 text-sm transition-all focus:bg-background"
           />
           {searchQuery && (
             <button

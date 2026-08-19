@@ -142,8 +142,7 @@ async function QCQueueContent() {
             </div>
 
             {/* Footer */}
-            <div className="flex items-center justify-between border-t border-border/60 pt-3">
-              <DriveLink href={item.drive_link} />
+            <div className="flex items-center justify-end border-t border-border/60 pt-3">
               <div className="flex items-center gap-2">
                 {isSubmissionLate(item.submitted_at, item.deadline) && (
                   <Badge variant="destructive" className="bg-red-500/10 text-red-600 dark:text-red-400 border-red-500/30 text-[10px] px-1.5 py-0 font-semibold">

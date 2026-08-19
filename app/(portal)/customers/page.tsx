@@ -17,6 +17,9 @@ type Customer = {
   created_at: string
 }
 
+import Link from "next/link"
+import { FileText } from "lucide-react"
+
 export default async function CustomersPage() {
   const session = await getSession()
   if (!session) redirect("/login")
@@ -35,14 +38,14 @@ export default async function CustomersPage() {
           action={<AddCustomerButton />}
         />
         <Suspense fallback={<CustomersSkeleton />}>
-          <CustomersContent />
+          <CustomersContent isManager={isManager} />
         </Suspense>
       </div>
     </main>
   )
 }
 
-async function CustomersContent() {
+async function CustomersContent({ isManager }: { isManager: boolean }) {
   await ensureCustomerTable()
 
   const customers = (await sql`
@@ -74,7 +77,7 @@ async function CustomersContent() {
       ) : (
         <div className="overflow-hidden rounded-xl border border-border bg-card shadow-xs">
           {/* Header */}
-          <div className="hidden items-center gap-4 border-b border-border bg-muted/30 px-4 py-2.5 text-xs font-medium text-muted-foreground md:grid md:grid-cols-[140px_minmax(0,1fr)_260px_140px_60px]">
+          <div className="hidden items-center gap-4 border-b border-border bg-muted/30 px-4 py-2.5 text-xs font-medium text-muted-foreground md:grid md:grid-cols-[140px_minmax(0,1fr)_240px_140px_160px]">
             <span>Code</span>
             <span>Name</span>
             <span>UUID</span>
@@ -87,7 +90,7 @@ async function CustomersContent() {
             {customers.map((c) => (
               <div
                 key={c.uuid}
-                className="flex flex-col gap-2 px-4 py-3.5 transition-colors hover:bg-muted/40 md:grid md:grid-cols-[140px_minmax(0,1fr)_260px_140px_60px] md:items-center md:gap-4"
+                className="flex flex-col gap-2 px-4 py-3.5 transition-colors hover:bg-muted/40 md:grid md:grid-cols-[140px_minmax(0,1fr)_240px_140px_160px] md:items-center md:gap-4"
               >
                 {/* Code */}
                 <div className="flex items-center gap-2">
@@ -98,9 +101,22 @@ async function CustomersContent() {
 
                 {/* Name */}
                 <div className="min-w-0">
-                  <p className="truncate text-sm font-medium text-foreground">
-                    {c.name}
-                  </p>
+                  {isManager ? (
+                    <Link
+                      href={`/customers/${c.uuid}`}
+                      className="group/link flex items-center gap-1.5 truncate text-sm font-medium text-foreground hover:text-primary transition-colors"
+                      title="View Customer Monthly Report"
+                    >
+                      <span className="truncate">{c.name}</span>
+                      <span className="text-xs text-primary font-normal underline opacity-0 group-hover/link:opacity-100 transition-opacity">
+                        (Monthly Report)
+                      </span>
+                    </Link>
+                  ) : (
+                    <p className="truncate text-sm font-medium text-foreground">
+                      {c.name}
+                    </p>
+                  )}
                 </div>
 
                 {/* UUID */}
@@ -119,8 +135,18 @@ async function CustomersContent() {
                   })}
                 </div>
 
-                {/* Edit Button */}
-                <div className="flex items-center justify-end">
+                {/* Actions */}
+                <div className="flex items-center justify-end gap-2">
+                  {isManager && (
+                    <Link
+                      href={`/customers/${c.uuid}`}
+                      className="inline-flex items-center gap-1 rounded-md border border-primary/30 bg-primary/10 px-2 py-1 text-xs font-medium text-primary hover:bg-primary/20 transition-colors"
+                      title="View Customer Monthly Report"
+                    >
+                      <FileText className="h-3 w-3" />
+                      Report
+                    </Link>
+                  )}
                   <EditCustomerButton customer={c} />
                 </div>
               </div>

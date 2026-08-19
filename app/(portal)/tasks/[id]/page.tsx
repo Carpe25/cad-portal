@@ -23,6 +23,7 @@ import { ParsedTrelloCard } from "@/lib/trello-types"
 import { PageHeader } from "@/components/portal/page-header"
 import { FolderPathLink } from "@/components/folder-path-link"
 import { DeadlineCountdown } from "@/components/portal/deadline-countdown"
+import { FormattedTextWithLinks } from "@/components/portal/formatted-text"
 
 type Task = {
   id: string
@@ -37,6 +38,7 @@ type Task = {
   work_type: string | null
   sr_no: string | null
   cd_project_no: string | null
+  version?: string | null
   request_date: string | null
   reference_image: string | null
   style_ref_number: string | null
@@ -137,10 +139,18 @@ export default async function TaskDetailPage({
     : null
   const embedUrl = folderId ? getDriveEmbedUrl(folderId) : null
 
-  let linodeFiles = await listTaskFiles(task.id)
+  const linodeFolderParts = [
+    task.cd_project_no,
+    task.customer_project_no,
+    task.sr_no,
+    task.work_type === "Old" ? "V2" : (task.version || "V1"),
+  ].map((s) => (s || "").trim()).filter(Boolean)
+  const linodeFolderName = linodeFolderParts.length > 0 ? linodeFolderParts.join("-") : (task.customer_project_no || task.title || task.id)
+
+  let linodeFiles = await listTaskFiles(task.id, linodeFolderName)
   if (linodeFiles.length === 0) {
-    await createTaskFolderInStorage(task.id, task.customer_project_no || task.title)
-    linodeFiles = await listTaskFiles(task.id)
+    await createTaskFolderInStorage(task.id, linodeFolderName)
+    linodeFiles = await listTaskFiles(task.id, linodeFolderName)
   }
 
   function formatFileSize(bytes: number): string {
@@ -382,8 +392,8 @@ export default async function TaskDetailPage({
                     <span className="text-xs font-semibold tracking-wider text-muted-foreground uppercase">
                       Description / Work Notes
                     </span>
-                    <p className="text-sm leading-relaxed text-foreground/90 whitespace-pre-wrap font-sans">
-                      {task.description}
+                    <p className="text-sm leading-relaxed text-foreground/90 font-sans">
+                      <FormattedTextWithLinks text={task.description} />
                     </p>
                   </div>
                 </>
@@ -395,8 +405,8 @@ export default async function TaskDetailPage({
                     <p className="text-xs font-semibold text-amber-600 dark:text-amber-400">
                       Client Revision Notes
                     </p>
-                    <p className="mt-1 text-sm text-foreground whitespace-pre-wrap font-sans">
-                      {task.revision_notes}
+                    <p className="mt-1 text-sm text-foreground font-sans">
+                      <FormattedTextWithLinks text={task.revision_notes} />
                     </p>
                   </div>
                 </>
@@ -719,16 +729,6 @@ export default async function TaskDetailPage({
                         {sub.reviewer_name &&
                           ` · Reviewed by ${sub.reviewer_name}`}
                       </p>
-                      {sub.drive_link && sub.drive_link.startsWith("http") && (
-                        <a
-                          href={sub.drive_link}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="mt-1.5 inline-block text-xs text-primary hover:underline"
-                        >
-                          Open CAD file / Link →
-                        </a>
-                      )}
                       {(sub.folder_path || (sub.drive_link && !sub.drive_link.startsWith("http"))) && (
                         <div className="mt-2">
                           <FolderPathLink
@@ -743,7 +743,7 @@ export default async function TaskDetailPage({
                             Designer Description / Notes
                           </p>
                           <p className="mt-0.5 text-xs text-foreground">
-                            {sub.designer_notes}
+                            <FormattedTextWithLinks text={sub.designer_notes} />
                           </p>
                         </div>
                       )}
@@ -753,7 +753,7 @@ export default async function TaskDetailPage({
                             QC Remarks
                           </p>
                           <p className="mt-0.5 text-xs text-foreground">
-                            {sub.remarks}
+                            <FormattedTextWithLinks text={sub.remarks} />
                           </p>
                         </div>
                       )}
@@ -773,7 +773,7 @@ export default async function TaskDetailPage({
                     Linode CAD & Task Files
                   </h2>
                   <p className="text-[11px] text-muted-foreground mt-0.5">
-                    Bucket folder: <code className="font-mono text-foreground">tasks/{task.id}/</code>
+                    Bucket folder: <code className="font-mono text-foreground">tasks/{linodeFolderName}/</code>
                   </p>
                 </div>
                 <Badge variant="secondary" className="text-[10px] font-mono font-semibold">
