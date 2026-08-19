@@ -17,6 +17,9 @@ export async function proxy(req: NextRequest) {
   const token = req.cookies.get("cad_session")?.value
 
   if (!token) {
+    if (pathname.startsWith("/api/")) {
+      return NextResponse.json({ error: "Session expired. Please log in again." }, { status: 401 })
+    }
     return NextResponse.redirect(new URL("/login", req.url))
   }
 
@@ -24,6 +27,9 @@ export async function proxy(req: NextRequest) {
     await jwtVerify(token, SECRET)
     return NextResponse.next()
   } catch {
+    if (pathname.startsWith("/api/")) {
+      return NextResponse.json({ error: "Session expired. Please log in again." }, { status: 401 })
+    }
     return NextResponse.redirect(new URL("/login", req.url))
   }
 }

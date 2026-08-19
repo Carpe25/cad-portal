@@ -36,7 +36,7 @@ export async function POST(
     }
 
     const body = await request.json().catch(() => ({}))
-    const { fileUrl, version } = body
+    const { fileUrl, version, designerNotes, folderPath } = body
 
     if (!fileUrl || typeof fileUrl !== "string") {
       return NextResponse.json({ error: "File URL is required" }, { status: 400 })
@@ -52,10 +52,17 @@ export async function POST(
       subVersion = `V${count + 1}`
     }
 
+    const cleanDesignerNotes = designerNotes ? String(designerNotes).trim() : null
+    const cleanFolderPath = folderPath ? String(folderPath).trim() : null
+
+    // Ensure columns exist in DB
+    await sql`ALTER TABLE submissions ADD COLUMN IF NOT EXISTS designer_notes TEXT`
+    await sql`ALTER TABLE submissions ADD COLUMN IF NOT EXISTS folder_path TEXT`
+
     // Record submission entry in DB
     await sql`
-      INSERT INTO submissions (task_id, version, drive_link, submitted_by, outcome)
-      VALUES (${taskId}, ${subVersion}, ${fileUrl}, ${session.id}, 'pending')
+      INSERT INTO submissions (task_id, version, drive_link, submitted_by, outcome, designer_notes, folder_path)
+      VALUES (${taskId}, ${subVersion}, ${fileUrl}, ${session.id}, 'pending', ${cleanDesignerNotes}, ${cleanFolderPath})
     `
 
     // Update task status to in_qc_review

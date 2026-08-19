@@ -127,12 +127,22 @@ export function TaskActions({
               }
             )
 
-            const presignedData = await presignedRes.json()
+            let presignedData: any = {}
+            try {
+              presignedData = await presignedRes.json()
+            } catch {
+              presignedData = { error: `Server returned status ${presignedRes.status}` }
+            }
+
             if (!presignedRes.ok || presignedData.error) {
-              setError(
-                presignedData.error ||
-                  `Failed to generate upload URL for: ${file.name}`
-              )
+              if (presignedRes.status === 401) {
+                setError("Your session has expired. Please refresh the page and log in again.")
+              } else {
+                setError(
+                  presignedData.error ||
+                    `Failed to generate upload URL for: ${file.name}`
+                )
+              }
               setUploadStatus(null)
               return
             }
@@ -240,6 +250,8 @@ export function TaskActions({
                 body: JSON.stringify({
                   fileUrl: lastUploadedUrl,
                   version: lastVersion,
+                  designerNotes: designerNotes,
+                  folderPath: folderPath,
                 }),
               }
             )
@@ -256,10 +268,17 @@ export function TaskActions({
 
           setUploadStatus("Upload complete!")
           setSelectedFiles([])
+          setDesignerNotes("")
+          setFolderPath("")
           router.refresh()
         } else {
-          const res = await submitForQCAction(task.id, driveLink)
+          const res = await submitForQCAction(task.id, driveLink, designerNotes, folderPath)
           if (res?.error) setError(res.error)
+          else {
+            setDesignerNotes("")
+            setFolderPath("")
+            router.refresh()
+          }
         }
       } catch (err: any) {
         setError(err.message || "Failed to submit for QC.")
@@ -398,97 +417,106 @@ export function TaskActions({
         {/* Designer: Revision resubmit */}
         {task.status === "revision_requested" && isAssignedDesigner && (
           <div className="flex flex-col gap-3">
-            <div className="rounded-lg bg-destructive/10 px-3 py-2">
-              <p className="text-xs font-medium text-destructive">
+            <div className="rounded-lg bg-destructive/10 px-3.5 py-2.5">
+              <p className="text-xs font-semibold text-destructive">
                 Revision Requested
               </p>
               <p className="mt-0.5 text-xs text-muted-foreground">
-                Fix the issues noted by QC, then resubmit your CAD files.
+                Fix the issues noted by QC, then upload your updated CAD files to resubmit.
               </p>
             </div>
-            {task.drive_folder_link ? (
-              <div className="flex flex-col gap-3 rounded-lg border border-primary/20 bg-primary/5 p-3.5">
-                <div className="flex flex-col gap-2">
-                  <label
-                    htmlFor="cad_files_resubmit"
-                    className="flex cursor-pointer flex-col items-center justify-center rounded-lg border-2 border-dashed border-primary/30 p-4 text-center hover:border-primary hover:bg-primary/10 transition-colors bg-background"
-                  >
-                    <FolderUp className="h-6 w-6 text-primary mb-1" />
-                    <span className="text-xs font-medium text-foreground">
-                      Select Updated CAD Folder / Files
-                    </span>
-                    <input
-                      id="cad_files_resubmit"
-                      type="file"
-                      // @ts-expect-error webkitdirectory is supported in modern browsers
-                      webkitdirectory=""
-                      directory=""
-                      multiple
-                      onChange={handleFileSelect}
-                      className="hidden"
-                      disabled={isPending}
-                    />
-                  </label>
 
-                  {selectedFiles.length > 0 && (
-                    <div className="rounded-md border border-border bg-background p-2.5">
-                      <p className="text-xs font-semibold text-foreground mb-1">
-                        {selectedFiles.length} file(s) selected:
-                      </p>
-                      <ul className="max-h-24 overflow-y-auto text-[11px] text-muted-foreground space-y-0.5 font-mono">
-                        {selectedFiles.slice(0, 10).map((f, i) => (
-                          <li key={i} className="truncate">• {f.webkitRelativePath || f.name}</li>
-                        ))}
-                      </ul>
-                    </div>
-                  )}
-                </div>
-
-                <Button
-                  onClick={handleSubmitWithFiles}
-                  disabled={isPending || selectedFiles.length === 0}
-                  className="w-full"
-                >
-                  {isPending
-                    ? uploadStatus || "Uploading CAD Files & Resubmitting..."
-                    : "Resubmit for QC"}
-                </Button>
+            <div className="flex flex-col gap-3 rounded-lg border border-primary/20 bg-primary/5 p-3.5">
+              <div>
+                <p className="text-xs font-semibold text-primary uppercase tracking-wide">
+                  Linode Task Storage (Resubmission)
+                </p>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  Select your updated CAD (.3dm) files or folder to upload directly into the task's Linode storage folder.
+                </p>
               </div>
-            ) : (
-              <div className="flex flex-col gap-3">
-                <div className="flex flex-col gap-1.5">
-                  <Label htmlFor="folder_path_resubmit" className="text-xs font-medium">
-                    Local / Shared Folder Path
-                  </Label>
-                  <Input
-                    id="folder_path_resubmit"
-                    placeholder="e.g. \\server\share\folder or Z:\Projects\CAD"
-                    value={folderPath}
-                    onChange={(e) => setFolderPath(e.target.value)}
+
+              <div className="flex flex-col gap-2">
+                <label
+                  htmlFor="cad_files_resubmit"
+                  className="flex cursor-pointer flex-col items-center justify-center rounded-lg border-2 border-dashed border-primary/30 p-4 text-center hover:border-primary hover:bg-primary/10 transition-colors bg-background"
+                >
+                  <FolderUp className="h-6 w-6 text-primary mb-1" />
+                  <span className="text-xs font-medium text-foreground">
+                    Select Updated CAD Folder / Files
+                  </span>
+                  <span className="text-[10px] text-muted-foreground">
+                    Click to pick folder or CAD files for resubmission
+                  </span>
+                  <input
+                    id="cad_files_resubmit"
+                    type="file"
+                    // @ts-expect-error webkitdirectory is supported in modern browsers
+                    webkitdirectory=""
+                    directory=""
+                    multiple
+                    onChange={handleFileSelect}
+                    className="hidden"
                     disabled={isPending}
                   />
-                </div>
-                <div className="flex flex-col gap-1.5">
-                  <Label htmlFor="designer_notes_resubmit" className="text-xs font-medium">
-                    Description / Notes for QC
-                  </Label>
-                  <Textarea
-                    id="designer_notes_resubmit"
-                    placeholder="Write description or updated notes for QC..."
-                    value={designerNotes}
-                    onChange={(e) => setDesignerNotes(e.target.value)}
-                    rows={3}
-                    disabled={isPending}
-                  />
-                </div>
-                <Button
-                  onClick={() => run(() => submitForQCAction(task.id, "", designerNotes, folderPath))}
+                </label>
+
+                {selectedFiles.length > 0 && (
+                  <div className="rounded-md border border-border bg-background p-2.5">
+                    <p className="text-xs font-semibold text-foreground mb-1">
+                      {selectedFiles.length} file(s) selected:
+                    </p>
+                    <ul className="max-h-24 overflow-y-auto text-[11px] text-muted-foreground space-y-0.5 font-mono">
+                      {selectedFiles.slice(0, 10).map((f, i) => (
+                        <li key={i} className="truncate">• {f.webkitRelativePath || f.name}</li>
+                      ))}
+                      {selectedFiles.length > 10 && (
+                        <li className="italic text-primary">...and {selectedFiles.length - 10} more files</li>
+                      )}
+                    </ul>
+                  </div>
+                )}
+              </div>
+
+              <div className="flex flex-col gap-1.5 mt-1">
+                <Label htmlFor="folder_path_resubmit" className="text-xs font-medium">
+                  Local / Shared Folder Path (Optional)
+                </Label>
+                <Input
+                  id="folder_path_resubmit"
+                  placeholder="e.g. \\server\share\folder or Z:\Projects\CAD"
+                  value={folderPath}
+                  onChange={(e) => setFolderPath(e.target.value)}
                   disabled={isPending}
-                >
-                  {isPending ? "Resubmitting…" : "Resubmit for QC"}
-                </Button>
+                  className="bg-background"
+                />
               </div>
-            )}
+
+              <div className="flex flex-col gap-1.5">
+                <Label htmlFor="designer_notes_resubmit" className="text-xs font-medium">
+                  Description / Notes for QC (Optional)
+                </Label>
+                <Textarea
+                  id="designer_notes_resubmit"
+                  placeholder="Write description or updated notes for QC..."
+                  value={designerNotes}
+                  onChange={(e) => setDesignerNotes(e.target.value)}
+                  rows={2}
+                  disabled={isPending}
+                  className="bg-background"
+                />
+              </div>
+
+              <Button
+                onClick={handleSubmitWithFiles}
+                disabled={isPending || (selectedFiles.length === 0 && !folderPath.trim())}
+                className="w-full mt-1"
+              >
+                {isPending
+                  ? uploadStatus || "Uploading CAD Files & Resubmitting..."
+                  : "Resubmit for QC"}
+              </Button>
+            </div>
           </div>
         )}
 

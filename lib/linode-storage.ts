@@ -185,6 +185,10 @@ export async function listTaskFiles(taskId: string, folderName?: string) {
   const prefixes = [`tasks/${taskId}/`]
   if (folderName && folderName !== taskId) {
     prefixes.unshift(`tasks/${folderName}/`)
+    const baseFolderName = folderName.replace(/-V\d+$/i, "")
+    if (baseFolderName && baseFolderName !== folderName) {
+      prefixes.unshift(`tasks/${baseFolderName}`)
+    }
   }
 
   const allFiles: Array<{ key: string; filename: string; size: number; lastModified?: Date; url: string }> = []
