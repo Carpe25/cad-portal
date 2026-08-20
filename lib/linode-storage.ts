@@ -66,6 +66,7 @@ function getContentType(filename: string): string {
     ".pdf": "application/pdf",
     ".txt": "text/plain",
     ".db": "application/x-sqlite3",
+    ".glb": "model/gltf-binary",
   }
   return mimeTypes[ext] || "application/octet-stream"
 }
@@ -99,7 +100,7 @@ export async function createTaskFolderInStorage(
             ContentType: "text/plain",
             ACL: "public-read",
           })
-        ).catch(() => {})
+        ).catch(() => { })
       }
       const url = `https://${bucket}.${region}.linodeobjects.com/${key}`
       return { url, key }
