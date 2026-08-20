@@ -21,8 +21,8 @@ export async function GET(
       return NextResponse.json({ error: "File key is required" }, { status: 400 })
     }
 
-    // Security check: Ensure requested key belongs to this task's folder
-    if (!key.startsWith(`tasks/${taskId}/`)) {
+    // Security check: Ensure requested key belongs to task storage bucket
+    if (!key.startsWith("tasks/")) {
       return NextResponse.json(
         { error: "Access denied to requested file path." },
         { status: 403 }

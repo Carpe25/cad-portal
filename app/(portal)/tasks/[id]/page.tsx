@@ -20,6 +20,7 @@ import {
   formatDateTimeDisplay,
 } from "@/lib/task-utils"
 import { ParsedTrelloCard } from "@/lib/trello-types"
+import { TaskFilesSidebar } from "@/components/portal/task-files-sidebar"
 import { PageHeader } from "@/components/portal/page-header"
 import { FolderPathLink } from "@/components/folder-path-link"
 import { DeadlineCountdown } from "@/components/portal/deadline-countdown"
@@ -766,82 +767,11 @@ export default async function TaskDetailPage({
 
           {/* Right: Linode CAD & Task Files */}
           <div className="flex flex-col gap-4">
-            <div className="overflow-hidden rounded-xl border border-border bg-card shadow-xs">
-              <div className="px-5 py-4 flex items-center justify-between">
-                <div>
-                  <h2 className="text-xs font-semibold tracking-wider text-muted-foreground uppercase">
-                    Linode CAD & Task Files
-                  </h2>
-                  <p className="text-[11px] text-muted-foreground mt-0.5">
-                    Bucket folder: <code className="font-mono text-foreground">tasks/{linodeFolderName}/</code>
-                  </p>
-                </div>
-                <Badge variant="secondary" className="text-[10px] font-mono font-semibold">
-                  {linodeFiles.length} file{linodeFiles.length !== 1 ? "s" : ""}
-                </Badge>
-              </div>
-              <Separator />
-
-              {linodeFiles.length > 0 ? (
-                <div className="divide-y divide-border">
-                  {linodeFiles.map((file) => {
-                    const downloadUrl = `/api/tasks/${task.id}/files/download?key=${encodeURIComponent(file.key)}`
-                    const lowerName = file.filename.toLowerCase()
-                    const isCad =
-                      lowerName.endsWith(".3dm") ||
-                      lowerName.endsWith(".stl") ||
-                      lowerName.endsWith(".stp") ||
-                      lowerName.endsWith(".step") ||
-                      lowerName.endsWith(".glb") ||
-                      lowerName.endsWith(".zip")
-                    return (
-                      <div
-                        key={file.key}
-                        className="px-5 py-3.5 flex items-center justify-between gap-3 hover:bg-muted/20 transition-colors"
-                      >
-                        <div className="flex items-center gap-3 min-w-0">
-                          <div
-                            className={`p-2 rounded-lg shrink-0 ${
-                              isCad
-                                ? "bg-primary/10 text-primary"
-                                : "bg-muted text-muted-foreground"
-                            }`}
-                          >
-                            <FileCode className="h-4 w-4" />
-                          </div>
-                          <div className="min-w-0">
-                            <p
-                              className="text-xs font-medium text-foreground truncate"
-                              title={file.filename}
-                            >
-                              {file.filename}
-                            </p>
-                            <p className="text-[10px] text-muted-foreground">
-                              {formatFileSize(file.size)}
-                              {file.lastModified &&
-                                ` · ${new Date(file.lastModified).toLocaleDateString("en-IN")}`}
-                            </p>
-                          </div>
-                        </div>
-
-                        <a
-                          href={downloadUrl}
-                          download
-                          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-primary text-primary-foreground text-xs font-medium hover:bg-primary/90 transition-colors shrink-0 shadow-2xs"
-                        >
-                          <Download className="h-3.5 w-3.5" />
-                          Download
-                        </a>
-                      </div>
-                    )
-                  })}
-                </div>
-              ) : (
-                <div className="px-5 py-8 text-center text-xs text-muted-foreground">
-                  No CAD or reference files uploaded to Linode storage for this task yet.
-                </div>
-              )}
-            </div>
+            <TaskFilesSidebar
+              taskId={task.id}
+              linodeFolderName={linodeFolderName}
+              files={linodeFiles}
+            />
 
             {/* Optional Legacy Google Drive Preview */}
             {embedUrl && (
