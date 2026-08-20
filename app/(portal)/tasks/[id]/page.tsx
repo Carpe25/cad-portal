@@ -786,12 +786,14 @@ export default async function TaskDetailPage({
                 <div className="divide-y divide-border">
                   {linodeFiles.map((file) => {
                     const downloadUrl = `/api/tasks/${task.id}/files/download?key=${encodeURIComponent(file.key)}`
+                    const lowerName = file.filename.toLowerCase()
                     const isCad =
-                      file.filename.endsWith(".3dm") ||
-                      file.filename.endsWith(".stl") ||
-                      file.filename.endsWith(".stp") ||
-                      file.filename.endsWith(".step") ||
-                      file.filename.endsWith(".zip")
+                      lowerName.endsWith(".3dm") ||
+                      lowerName.endsWith(".stl") ||
+                      lowerName.endsWith(".stp") ||
+                      lowerName.endsWith(".step") ||
+                      lowerName.endsWith(".glb") ||
+                      lowerName.endsWith(".zip")
                     return (
                       <div
                         key={file.key}

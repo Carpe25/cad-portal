@@ -340,7 +340,7 @@ export function TaskActions({
                   Linode Task Storage
                 </p>
                 <p className="text-xs text-muted-foreground mt-0.5">
-                  Select your CAD (.3dm) files or renders to upload directly into the task's Linode storage folder.
+                  Select your CAD (.3dm, .glb) files or renders to upload directly into the task's Linode storage folder.
                 </p>
               </div>
 
@@ -432,7 +432,7 @@ export function TaskActions({
                   Linode Task Storage (Resubmission)
                 </p>
                 <p className="text-xs text-muted-foreground mt-0.5">
-                  Select your updated CAD (.3dm) files or folder to upload directly into the task's Linode storage folder.
+                  Select your updated CAD (.3dm, .glb) files or folder to upload directly into the task's Linode storage folder.
                 </p>
               </div>
 

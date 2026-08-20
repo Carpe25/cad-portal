@@ -796,7 +796,7 @@ export function CreateTaskForm({
               </Badge>
             </div>
             <p className="text-xs text-muted-foreground">
-              A dedicated folder <code className="font-mono text-foreground font-semibold">tasks/&#123;{[cdProjectNo, customerProjectNo, srNoFormatted, versionInput].map(s => (s || "").trim()).filter(Boolean).join("-") || "foldername"}&#125;/</code> will be created in Linode Object Storage for all reference images and CAD 3DM file uploads.
+              A dedicated folder <code className="font-mono text-foreground font-semibold">tasks/&#123;{[cdProjectNo, customerProjectNo, srNoFormatted, versionInput].map(s => (s || "").trim()).filter(Boolean).join("-") || "foldername"}&#125;/</code> will be created in Linode Object Storage for all reference images and CAD file uploads (.3dm, .glb, etc.).
             </p>
           </div>
 

@@ -353,6 +353,7 @@ const ALLOWED_EXTENSIONS = new Set([
   ".stl",
   ".stp",
   ".step",
+  ".glb",
   ".igs",
   ".iges",
   ".zip",
@@ -408,7 +409,7 @@ export async function generatePresignedUploadUrl({
   const ext = path.extname(filename).toLowerCase()
   if (!ALLOWED_EXTENSIONS.has(ext)) {
     throw new Error(
-      `File extension '${ext}' is not allowed. Allowed formats: .3dm, .stl, .step, .igs, .zip, .pdf, .png, .jpg`
+      `File extension '${ext}' is not allowed. Allowed formats: .3dm, .stl, .step, .glb, .igs, .zip, .pdf, .png, .jpg`
     )
   }
 
