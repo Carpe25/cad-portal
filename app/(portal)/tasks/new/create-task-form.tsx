@@ -232,11 +232,15 @@ export function CreateTaskForm({
   }
 
   // Handle reference images selection (multiple)
+  // Blob previews only render for images; other file types show a name chip
+  const previewOf = (file: File) =>
+    file.type.startsWith("image/") ? URL.createObjectURL(file) : ""
+
   const handleImageChange = (e: ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files || [])
     if (files.length === 0) return
 
-    const newPreviews = files.map((file) => URL.createObjectURL(file))
+    const newPreviews = files.map((file) => previewOf(file))
     setSelectedImageFiles((prev) => [...prev, ...files])
     setImagePreviews((prev) => [...prev, ...newPreviews])
     e.target.value = ""
@@ -267,12 +271,10 @@ export function CreateTaskForm({
     e.stopPropagation()
     setIsDragging(false)
 
-    const files = Array.from(e.dataTransfer.files || []).filter((file) =>
-      file.type.startsWith("image/")
-    )
+    const files = Array.from(e.dataTransfer.files || [])
     if (files.length === 0) return
 
-    const newPreviews = files.map((file) => URL.createObjectURL(file))
+    const newPreviews = files.map((file) => previewOf(file))
     setSelectedImageFiles((prev) => [...prev, ...files])
     setImagePreviews((prev) => [...prev, ...newPreviews])
   }
@@ -298,9 +300,7 @@ export function CreateTaskForm({
     }
 
     if (filesFromClipboard.length === 0 && clipboardData.files?.length) {
-      const files = Array.from(clipboardData.files).filter((file) =>
-        file.type.startsWith("image/")
-      )
+      const files = Array.from(clipboardData.files)
       filesFromClipboard.push(...files)
     }
 
@@ -310,7 +310,7 @@ export function CreateTaskForm({
       if (!isInputText || activeEl.getAttribute("type") === "file") {
         e.preventDefault()
       }
-      const newPreviews = filesFromClipboard.map((file) => URL.createObjectURL(file))
+      const newPreviews = filesFromClipboard.map((file) => previewOf(file))
       setSelectedImageFiles((prev) => [...prev, ...filesFromClipboard])
       setImagePreviews((prev) => [...prev, ...newPreviews])
       return
@@ -708,16 +708,15 @@ export function CreateTaskForm({
                   <ImageIcon className="h-6 w-6 text-muted-foreground mb-1" />
                 )}
                 <span className="text-xs font-medium text-foreground">
-                  {isDragging ? "Drop images here..." : "Upload or Drag & Drop Images"}
+                  {isDragging ? "Drop files here..." : "Upload or Drag & Drop Files"}
                 </span>
                 <span className="text-[10px] text-muted-foreground mt-0.5">
-                  PNG, JPG, WEBP up to 10MB (Multiple allowed)
+                  Any file type (Multiple allowed)
                 </span>
                 <input
                   id="reference_image"
                   name="reference_image"
                   type="file"
-                  accept="image/*"
                   multiple
                   onChange={handleImageChange}
                   className="hidden"
@@ -727,11 +726,17 @@ export function CreateTaskForm({
 
               {imagePreviews.map((preview, index) => (
                 <div key={index} className="relative h-24 w-24 overflow-hidden rounded-lg border border-border bg-muted shrink-0">
-                  <img
-                    src={preview}
-                    alt={`Reference preview ${index + 1}`}
-                    className="h-full w-full object-cover"
-                  />
+                  {preview ? (
+                    <img
+                      src={preview}
+                      alt={`Reference preview ${index + 1}`}
+                      className="h-full w-full object-cover"
+                    />
+                  ) : (
+                    <span className="flex h-full w-full items-center justify-center break-all p-1 text-center text-[9px] text-muted-foreground">
+                      {selectedImageFiles[index]?.name}
+                    </span>
+                  )}
                   <button
                     type="button"
                     onClick={() => removeImagePreview(index)}

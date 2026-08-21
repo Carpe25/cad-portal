@@ -348,28 +348,6 @@ export async function generateReferencePresignedUploadUrl({
 }
 
 
-const ALLOWED_EXTENSIONS = new Set([
-  ".3dm",
-  ".stl",
-  ".stp",
-  ".step",
-  ".glb",
-  ".igs",
-  ".iges",
-  ".zip",
-  ".pdf",
-  ".png",
-  ".jpg",
-  ".jpeg",
-  ".webp",
-  ".txt",
-  ".dwg",
-  ".dxf",
-  ".obj",
-  ".fbx",
-  ".gcode",
-  ".db",
-])
 
 const MAX_FILE_SIZE_BYTES = 1024 * 1024 * 1024 // 1 GB Max limit
 
@@ -405,13 +383,7 @@ export async function generatePresignedUploadUrl({
     throw new Error("File size exceeds maximum allowed limit of 1 GB.")
   }
 
-  // 2. Strict File Extension Whitelisting
   const ext = path.extname(filename).toLowerCase()
-  if (!ALLOWED_EXTENSIONS.has(ext)) {
-    throw new Error(
-      `File extension '${ext}' is not allowed. Allowed formats: .3dm, .stl, .step, .glb, .igs, .zip, .pdf, .png, .jpg`
-    )
-  }
 
   // 3. Filename Sanitization & Formatting (project_no - customer_project_no - version)
   const baseNameWithoutExt = path.basename(filename, ext)

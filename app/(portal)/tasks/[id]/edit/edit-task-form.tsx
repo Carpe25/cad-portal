@@ -259,11 +259,15 @@ export function EditTaskForm({
     setDeadline(calculateDeadlineDate(categoryCode, dateStr))
   }
 
+  // Blob previews only render for images; other file types show a name chip
+  const previewOf = (file: File) =>
+    file.type.startsWith("image/") ? URL.createObjectURL(file) : ""
+
   const handleImageChange = (e: ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files || [])
     if (files.length === 0) return
 
-    const newPreviews = files.map((file) => URL.createObjectURL(file))
+    const newPreviews = files.map((file) => previewOf(file))
     setSelectedImageFiles((prev) => [...prev, ...files])
     setImagePreviews((prev) => [...prev, ...newPreviews])
     e.target.value = ""
@@ -290,9 +294,7 @@ export function EditTaskForm({
     }
 
     if (filesFromClipboard.length === 0 && clipboardData.files?.length) {
-      const files = Array.from(clipboardData.files).filter((file) =>
-        file.type.startsWith("image/")
-      )
+      const files = Array.from(clipboardData.files)
       filesFromClipboard.push(...files)
     }
 
@@ -302,7 +304,7 @@ export function EditTaskForm({
       if (!isInputText || activeEl.getAttribute("type") === "file") {
         e.preventDefault()
       }
-      const newPreviews = filesFromClipboard.map((file) => URL.createObjectURL(file))
+      const newPreviews = filesFromClipboard.map((file) => previewOf(file))
       setSelectedImageFiles((prev) => [...prev, ...filesFromClipboard])
       setImagePreviews((prev) => [...prev, ...newPreviews])
       return
@@ -744,7 +746,6 @@ export function EditTaskForm({
               <Input
                 id="reference_image"
                 type="file"
-                accept="image/*"
                 multiple
                 onChange={handleImageChange}
                 className="cursor-pointer"
@@ -756,7 +757,13 @@ export function EditTaskForm({
                 {imagePreviews.map((preview, index) => (
                   <div key={index} className="relative h-20 w-20 overflow-hidden rounded-md border border-border">
                     {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img src={preview} alt="New upload preview" className="h-full w-full object-cover" />
+                    {preview ? (
+                      <img src={preview} alt="New upload preview" className="h-full w-full object-cover" />
+                    ) : (
+                      <span className="flex h-full w-full items-center justify-center break-all p-1 text-center text-[9px] text-muted-foreground">
+                        {selectedImageFiles[index]?.name}
+                      </span>
+                    )}
                     <button
                       type="button"
                       onClick={() => removeImagePreview(index)}
