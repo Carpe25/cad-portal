@@ -51,6 +51,7 @@ export default async function EditTaskPage({
     deadline: rawTask.deadline ? String(rawTask.deadline) : null,
     drive_folder_link: rawTask.drive_folder_link ? String(rawTask.drive_folder_link) : null,
     assigned_to: rawTask.assigned_to ? String(rawTask.assigned_to) : null,
+    deliverables: rawTask.deliverables ? String(rawTask.deliverables) : null,
   }
 
   const [rawDesigners, rawCustomers] = await Promise.all([

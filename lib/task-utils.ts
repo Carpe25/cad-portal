@@ -3,6 +3,7 @@ export const STATUS_LABELS: Record<string, string> = {
   in_progress: "In Progress",
   in_qc_review: "In QC Review",
   revision_requested: "Revision",
+  ready_for_client: "Ready for Client",
   client_ready: "Client Ready",
   closed: "Closed",
 }
@@ -17,6 +18,7 @@ export const STATUS_COLORS: Record<string, string> = {
   in_progress: "bg-blue-500/10 text-blue-600 dark:text-blue-400",
   in_qc_review: "bg-amber-500/10 text-amber-600 dark:text-amber-400",
   revision_requested: "bg-destructive/10 text-destructive",
+  ready_for_client: "bg-teal-500/10 text-teal-600 dark:text-teal-400",
   client_ready: "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400",
   closed: "bg-secondary text-muted-foreground",
 }

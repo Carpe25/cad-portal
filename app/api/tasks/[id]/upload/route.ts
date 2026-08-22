@@ -2,6 +2,7 @@ import { NextResponse } from "next/server"
 import { getSession } from "@/lib/session"
 import { sql } from "@/lib/db"
 import { uploadTaskFile } from "@/lib/linode-storage"
+import { findTaskByIdentifier, canUploadToTask } from "@/lib/task-db"
 import fs from "fs"
 import path from "path"
 import os from "os"
@@ -16,16 +17,20 @@ export async function POST(
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
 
-    const { id: taskId } = await params
-    if (!taskId) {
+    const { id: taskIdentifier } = await params
+    if (!taskIdentifier) {
       return NextResponse.json({ error: "Task ID is required" }, { status: 400 })
     }
 
-    const taskRows = await sql`
-      SELECT id FROM tasks WHERE id = ${taskId}
-    `
-    if (!taskRows.length) {
+    const task = await findTaskByIdentifier(taskIdentifier)
+    if (!task) {
       return NextResponse.json({ error: "Task not found" }, { status: 404 })
+    }
+
+    const taskId = task.id
+
+    if (!canUploadToTask(task, session)) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 })
     }
 
     // Determine current submission version
@@ -107,6 +112,9 @@ export async function POST(
       await sql`
         UPDATE tasks SET status = 'in_qc_review' WHERE id = ${taskId}
       `
+
+      const { endActiveTimeLogs } = await import("@/lib/time-tracking")
+      await endActiveTimeLogs(taskId, "designer", session.id)
     }
 
     return NextResponse.json({

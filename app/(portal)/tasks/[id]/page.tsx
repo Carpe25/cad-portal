@@ -15,16 +15,18 @@ import {
   PRIORITY_COLORS,
   labelBadgeClass,
   isTaskOverdue,
-  isSubmissionLate,
   formatDateDisplay,
   formatDateTimeDisplay,
 } from "@/lib/task-utils"
 import { ParsedTrelloCard } from "@/lib/trello-types"
 import { TaskFilesSidebar } from "@/components/portal/task-files-sidebar"
+import { SubmissionHistory } from "@/components/portal/submission-history"
 import { PageHeader } from "@/components/portal/page-header"
-import { FolderPathLink } from "@/components/folder-path-link"
 import { DeadlineCountdown } from "@/components/portal/deadline-countdown"
 import { FormattedTextWithLinks } from "@/components/portal/formatted-text"
+import { getTaskTimeSummaries, formatDuration } from "@/lib/time-tracking"
+import { parseDeliverables } from "@/lib/deliverables"
+import { getFileReplacementLogs } from "@/lib/file-replacements"
 
 type Task = {
   id: string
@@ -42,6 +44,9 @@ type Task = {
   version?: string | null
   request_date: string | null
   reference_image: string | null
+  client_reference_images: string | null
+  self_reference_images: string | null
+  deliverables: string | null
   style_ref_number: string | null
   description: string | null
   points: number
@@ -74,21 +79,17 @@ type Submission = {
   folder_path: string | null
 }
 
-const OUTCOME_BADGE: Record<string, string> = {
-  pending:
-    "border-amber-500/20 bg-amber-500/10 text-amber-600 dark:text-amber-400",
-  approved:
-    "border-emerald-500/20 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400",
-  sent_back: "border-destructive/20 bg-destructive/10 text-destructive",
-  reopened_for_revision:
-    "border-purple-500/30 bg-purple-500/10 text-purple-600 dark:text-purple-400 font-medium",
-}
-
-const OUTCOME_LABEL: Record<string, string> = {
-  pending: "Pending Review",
-  approved: "Approved",
-  sent_back: "Sent Back",
-  reopened_for_revision: "Reopened for Client",
+function parseImageList(raw: string | null | undefined): string[] {
+  if (!raw) return []
+  try {
+    if (raw.trim().startsWith("[")) {
+      const parsed = JSON.parse(raw)
+      return Array.isArray(parsed) ? parsed.filter(Boolean) : []
+    }
+    return [raw]
+  } catch {
+    return [raw]
+  }
 }
 
 export default async function TaskDetailPage({
@@ -99,6 +100,9 @@ export default async function TaskDetailPage({
   const { id } = await params
   const session = await getSession()
   if (!session) redirect("/login")
+
+  const { ensureTaskTableColumns } = await import("@/app/(portal)/tasks/new/actions")
+  await ensureTaskTableColumns()
 
   const cleanId = id.trim()
   const taskRows = await sql`
@@ -167,6 +171,14 @@ export default async function TaskDetailPage({
         name: string
       }[])
       : []
+
+  const timeSummaries = await getTaskTimeSummaries(task.id)
+  const fileReplacementLogs = await getFileReplacementLogs(task.id)
+  const deliverableItems = parseDeliverables(task.deliverables)
+  const clientReferenceImages = parseImageList(
+    task.client_reference_images || task.reference_image
+  )
+  const selfReferenceImages = parseImageList(task.self_reference_images)
 
   const canSeeCustomerName = isManager || isQC
   const taskHeading = task.customer_project_no || task.title
@@ -343,49 +355,125 @@ export default async function TaskDetailPage({
                 </div>
               </dl>
 
-              {/* Reference Image display (Single or Multiple) */}
-              {(() => {
-                if (!task.reference_image) return null
-                let images: string[] = []
-                try {
-                  if (task.reference_image.trim().startsWith("[")) {
-                    images = JSON.parse(task.reference_image)
-                  } else {
-                    images = [task.reference_image]
-                  }
-                } catch {
-                  images = [task.reference_image]
-                }
-                if (images.length === 0) return null
-
-                return (
-                  <>
-                    <Separator className="my-4" />
-                    <div className="flex flex-col gap-2">
-                      <span className="text-xs font-semibold text-muted-foreground tracking-wide uppercase">
-                        Reference Image{images.length > 1 ? `s (${images.length})` : ""}
-                      </span>
-                      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-                        {images.map((imgUrl, idx) => (
-                          <a
-                            key={idx}
-                            href={imgUrl}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="group relative overflow-hidden rounded-lg border border-border bg-muted/30 p-1 hover:border-primary/50 transition-colors"
-                          >
-                            <img
-                              src={imgUrl}
-                              alt={`Reference ${idx + 1}`}
-                              className="max-h-64 w-full rounded object-contain transition-transform duration-200 group-hover:scale-105"
-                            />
-                          </a>
-                        ))}
-                      </div>
+              {/* Time tracking — always visible */}
+              <>
+                <Separator className="my-4" />
+                <div className="flex flex-col gap-2">
+                  <span className="text-xs font-semibold text-muted-foreground tracking-wide uppercase">
+                    Time Tracking
+                  </span>
+                  {timeSummaries.length === 0 ? (
+                    <p className="text-xs text-muted-foreground rounded-lg border border-dashed border-border px-3 py-2">
+                      No time logged yet. Designer time starts when they click Start; QC time is recorded when they approve or send back a submission.
+                    </p>
+                  ) : (
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                      {timeSummaries.map((entry) => (
+                        <div
+                          key={`${entry.user_id}-${entry.role_type}`}
+                          className="rounded-lg border border-border bg-muted/20 px-3 py-2"
+                        >
+                          <p className="text-xs font-medium text-foreground">
+                            {entry.user_name || entry.user_id}
+                          </p>
+                          <p className="text-[11px] text-muted-foreground">
+                            {entry.role_type === "designer" ? "CAD build time" : "QC review time"}
+                          </p>
+                          <p className="text-sm font-semibold tabular-nums mt-0.5">
+                            {formatDuration(entry.total_secs)}
+                          </p>
+                        </div>
+                      ))}
                     </div>
-                  </>
-                )
-              })()}
+                  )}
+                </div>
+              </>
+
+              {/* Deliverables */}
+              {deliverableItems.length > 0 && (
+                <>
+                  <Separator className="my-4" />
+                  <div className="flex flex-col gap-2">
+                    <span className="text-xs font-semibold text-muted-foreground tracking-wide uppercase">
+                      Required Deliverables
+                    </span>
+                    <div className="flex flex-wrap gap-2">
+                      {deliverableItems.map((item) => (
+                        <Badge
+                          key={item.id}
+                          variant="outline"
+                          className={
+                            item.required
+                              ? "border-primary/30 bg-primary/10 text-primary"
+                              : "text-muted-foreground"
+                          }
+                        >
+                          {item.label}
+                          {item.required ? " *" : ""}
+                        </Badge>
+                      ))}
+                    </div>
+                  </div>
+                </>
+              )}
+
+              {/* Client reference images */}
+              {clientReferenceImages.length > 0 && (
+                <>
+                  <Separator className="my-4" />
+                  <div className="flex flex-col gap-2">
+                    <span className="text-xs font-semibold text-muted-foreground tracking-wide uppercase">
+                      Client References ({clientReferenceImages.length})
+                    </span>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                      {clientReferenceImages.map((imgUrl, idx) => (
+                        <a
+                          key={idx}
+                          href={imgUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="group relative overflow-hidden rounded-lg border border-border bg-muted/30 p-1 hover:border-primary/50 transition-colors"
+                        >
+                          <img
+                            src={imgUrl}
+                            alt={`Client reference ${idx + 1}`}
+                            className="max-h-64 w-full rounded object-contain transition-transform duration-200 group-hover:scale-105"
+                          />
+                        </a>
+                      ))}
+                    </div>
+                  </div>
+                </>
+              )}
+
+              {/* Self reference images */}
+              {selfReferenceImages.length > 0 && (
+                <>
+                  <Separator className="my-4" />
+                  <div className="flex flex-col gap-2">
+                    <span className="text-xs font-semibold text-muted-foreground tracking-wide uppercase">
+                      Self References ({selfReferenceImages.length})
+                    </span>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                      {selfReferenceImages.map((imgUrl, idx) => (
+                        <a
+                          key={idx}
+                          href={imgUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="group relative overflow-hidden rounded-lg border border-border bg-muted/30 p-1 hover:border-primary/50 transition-colors"
+                        >
+                          <img
+                            src={imgUrl}
+                            alt={`Self reference ${idx + 1}`}
+                            className="max-h-64 w-full rounded object-contain transition-transform duration-200 group-hover:scale-105"
+                          />
+                        </a>
+                      ))}
+                    </div>
+                  </div>
+                </>
+              )}
               {task.description && (
                 <>
                   <Separator className="my-4" />
@@ -655,6 +743,7 @@ export default async function TaskDetailPage({
             <TaskActions
               task={{
                 id: task.id,
+                readable_id: task.readable_id,
                 status: task.status,
                 assigned_to: task.assigned_to,
                 drive_folder_link: task.drive_folder_link,
@@ -675,94 +764,14 @@ export default async function TaskDetailPage({
               currentPoints={task.points}
             />
 
-            {/* Version History */}
-            {submissions.length > 0 && (
-              <div className="overflow-hidden rounded-xl border border-border bg-card shadow-xs">
-                <div className="px-5 py-4">
-                  <h2 className="text-xs font-semibold tracking-wider text-muted-foreground uppercase">
-                    Submission History
-                  </h2>
-                </div>
-                <Separator />
-                <div className="divide-y divide-border">
-                  {submissions.map((sub, idx) => {
-                    const isReopened =
-                      sub.outcome === "reopened_for_revision" ||
-                      (sub.outcome === "approved" &&
-                        task.status !== "client_ready" &&
-                        task.status !== "closed" &&
-                        Boolean(task.revision_notes) &&
-                        idx === submissions.findLastIndex((s) => s.outcome === "approved" || s.outcome === "reopened_for_revision"))
-                    const outcomeKey = isReopened ? "reopened_for_revision" : sub.outcome
-
-                    return (
-                      <div key={sub.id} className="px-5 py-4">
-                        <div className="flex items-center justify-between gap-2">
-                          <div className="flex items-center gap-2">
-                            <span className="font-mono text-xs font-semibold">
-                              {sub.version}
-                            </span>
-                            <Badge
-                              variant="outline"
-                              className={`text-xs ${OUTCOME_BADGE[outcomeKey] ?? ""}`}
-                            >
-                              {OUTCOME_LABEL[outcomeKey] ?? outcomeKey}
-                            </Badge>
-                          </div>
-                          <div className="flex items-center gap-2">
-                            {isSubmissionLate(sub.submitted_at, task.deadline) && (
-                              <Badge variant="destructive" className="bg-red-500/10 text-red-600 dark:text-red-400 border-red-500/30 text-[10px] px-1.5 py-0 font-semibold">
-                                Submitted Late
-                              </Badge>
-                            )}
-                            <p className="text-xs text-muted-foreground">
-                              {new Date(sub.submitted_at).toLocaleString("en-IN", {
-                                day: "numeric",
-                                month: "long",
-                                hour: "2-digit",
-                                minute: "2-digit",
-                              })}
-                            </p>
-                          </div>
-                      </div>
-                      <p className="mt-1 text-xs text-muted-foreground">
-                        Submitted by {sub.submitter_name}
-                        {sub.reviewer_name &&
-                          ` · Reviewed by ${sub.reviewer_name}`}
-                      </p>
-                      {(sub.folder_path || (sub.drive_link && !sub.drive_link.startsWith("http"))) && (
-                        <div className="mt-2">
-                          <FolderPathLink
-                            path={sub.folder_path || sub.drive_link}
-                            label={`Shared Folder Path (${sub.version})`}
-                          />
-                        </div>
-                      )}
-                      {sub.designer_notes && (
-                        <div className="mt-2.5 rounded-lg border border-primary/20 bg-primary/8 px-3.5 py-2.5">
-                          <p className="text-xs font-semibold text-primary">
-                            Designer Description / Notes
-                          </p>
-                          <p className="mt-0.5 text-xs text-foreground">
-                            <FormattedTextWithLinks text={sub.designer_notes} />
-                          </p>
-                        </div>
-                      )}
-                      {sub.remarks && (
-                        <div className="mt-2.5 rounded-lg border border-destructive/20 bg-destructive/8 px-3.5 py-2.5">
-                          <p className="text-xs font-semibold text-destructive">
-                            QC Remarks
-                          </p>
-                          <p className="mt-0.5 text-xs text-foreground">
-                            <FormattedTextWithLinks text={sub.remarks} />
-                          </p>
-                        </div>
-                      )}
-                    </div>
-                  )})}
-                </div>
-              </div>
-            )}
+            <SubmissionHistory
+              taskId={task.id}
+              submissions={submissions}
+              fileReplacements={fileReplacementLogs}
+              taskStatus={task.status}
+              revisionNotes={task.revision_notes}
+              deadline={task.deadline}
+            />
           </div>
 
           {/* Right: Linode CAD & Task Files */}
@@ -771,6 +780,7 @@ export default async function TaskDetailPage({
               taskId={task.id}
               linodeFolderName={linodeFolderName}
               files={linodeFiles}
+              isQC={isQC}
             />
 
             {/* Optional Legacy Google Drive Preview */}

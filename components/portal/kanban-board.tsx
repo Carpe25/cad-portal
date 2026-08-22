@@ -12,6 +12,7 @@ import {
   Timer,
   CheckCircle2,
   AlertCircle,
+  Send,
   FileSpreadsheet,
   Filter,
   Building2,
@@ -51,11 +52,19 @@ export type Designer = {
   name: string
 }
 
+const UNASSIGNED_STAGE = {
+  key: "unassigned",
+  label: "Unassigned",
+  icon: User,
+  color: "border-amber-500/30 text-amber-600 dark:text-amber-400 bg-amber-500/10",
+}
+
 const STAGES = [
   { key: "assigned", label: "Assigned", icon: UserCheck, color: "border-slate-400/30 text-slate-600 dark:text-slate-400 bg-slate-500/10" },
   { key: "in_progress", label: "In Progress", icon: Timer, color: "border-blue-500/30 text-blue-600 dark:text-blue-400 bg-blue-500/10" },
   { key: "in_qc_review", label: "In QC Review", icon: ShieldCheck, color: "border-amber-500/30 text-amber-600 dark:text-amber-400 bg-amber-500/10" },
   { key: "revision_requested", label: "Revision", icon: AlertCircle, color: "border-red-500/30 text-red-600 dark:text-red-400 bg-red-500/10" },
+  { key: "ready_for_client", label: "Ready for Client", icon: Send, color: "border-teal-500/30 text-teal-600 dark:text-teal-400 bg-teal-500/10" },
   { key: "client_ready", label: "Client Ready", icon: CheckCircle2, color: "border-emerald-500/30 text-emerald-600 dark:text-emerald-400 bg-emerald-500/10" },
   { key: "closed", label: "Closed", icon: FileSpreadsheet, color: "border-slate-400/30 text-slate-500 bg-slate-500/5" },
 ]
@@ -92,11 +101,24 @@ export function KanbanBoard({
     )
   })
 
-  // Grouping by stage
+  // Grouping by stage — unassigned non-closed tasks live in their own column
+  const unassignedStageTasks = filteredTasks.filter(
+    (t) => (!t.assigned_to || t.assigned_to === "") && t.status !== "closed"
+  )
+
   const tasksByStage = STAGES.map((stage) => ({
     ...stage,
-    tasks: filteredTasks.filter((t) => t.status === stage.key),
+    tasks: filteredTasks.filter((t) => {
+      if (t.status !== stage.key) return false
+      if (stage.key !== "closed" && (!t.assigned_to || t.assigned_to === "")) return false
+      return true
+    }),
   }))
+
+  const stageColumns =
+    unassignedStageTasks.length > 0
+      ? [{ ...UNASSIGNED_STAGE, tasks: unassignedStageTasks }, ...tasksByStage]
+      : tasksByStage
 
   // Grouping by designer (EXCLUDE CLOSED TASKS for designer view as requested)
   const nonClosedTasksForDesigners = filteredTasks.filter(
@@ -148,8 +170,8 @@ export function KanbanBoard({
   // Active columns to render based on mobile filter selection or full desktop view
   const visibleStageColumns =
     selectedStage === "all"
-      ? tasksByStage
-      : tasksByStage.filter((col) => col.key === selectedStage)
+      ? stageColumns
+      : stageColumns.filter((col) => col.key === selectedStage)
 
   const visibleDesignerColumns =
     selectedDesigner === "all"
@@ -239,7 +261,7 @@ export function KanbanBoard({
               <option value="all">
                 All Stages ({filteredTasks.length})
               </option>
-              {tasksByStage.map((s) => (
+              {stageColumns.map((s) => (
                 <option key={s.key} value={s.key}>
                   {s.label} ({s.tasks.length})
                 </option>
@@ -282,7 +304,15 @@ export function KanbanBoard({
       {/* Kanban Board Container */}
       <div className="w-full overflow-x-auto pb-3">
         {viewMode === "stage" ? (
-          <div className="flex flex-col gap-4 w-full sm:grid sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-6 min-w-[760px] xl:min-w-0">
+          <div
+            className={`flex flex-col gap-4 w-full sm:grid sm:grid-cols-2 md:grid-cols-3 min-w-[760px] xl:min-w-0 ${
+              stageColumns.length > 7
+                ? "xl:grid-cols-8"
+                : stageColumns.length > 6
+                  ? "xl:grid-cols-7"
+                  : "xl:grid-cols-6"
+            }`}
+          >
             {visibleStageColumns.map((column) => (
               <KanbanColumn
                 key={column.key}
@@ -291,6 +321,7 @@ export function KanbanBoard({
                 headerBadgeClass={column.color}
                 tasks={column.tasks}
                 viewMode="stage"
+                showStatusBadge={column.key === "unassigned"}
               />
             ))}
           </div>
@@ -336,12 +367,14 @@ function KanbanColumn({
   headerBadgeClass,
   tasks,
   viewMode,
+  showStatusBadge,
 }: {
   title: string
   count: number
   headerBadgeClass: string
   tasks: KanbanTask[]
   viewMode: "stage" | "designer" | "customer"
+  showStatusBadge?: boolean
 }) {
   return (
     <div className="flex w-full shrink-0 flex-col rounded-xl border border-border/80 bg-muted/20">
@@ -367,7 +400,12 @@ function KanbanColumn({
           </div>
         ) : (
           tasks.map((task) => (
-            <TaskCard key={task.id} task={task} viewMode={viewMode} />
+            <TaskCard
+              key={task.id}
+              task={task}
+              viewMode={viewMode}
+              showStatusBadge={showStatusBadge}
+            />
           ))
         )}
       </div>
@@ -378,9 +416,11 @@ function KanbanColumn({
 function TaskCard({
   task,
   viewMode,
+  showStatusBadge,
 }: {
   task: KanbanTask
   viewMode: "stage" | "designer" | "customer"
+  showStatusBadge?: boolean
 }) {
   return (
     <Link
@@ -420,7 +460,7 @@ function TaskCard({
 
       {/* Bottom Metadata & Badges */}
       <div className="mt-3 flex flex-wrap items-center justify-between gap-1.5 border-t border-border/40 pt-2 text-[11px] text-muted-foreground min-w-0 max-w-full">
-        {viewMode === "designer" ? (
+        {viewMode === "designer" || showStatusBadge ? (
           <Badge
             variant="outline"
             className={`text-[10px] px-1.5 py-0 font-medium truncate max-w-full ${

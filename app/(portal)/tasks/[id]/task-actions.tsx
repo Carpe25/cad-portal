@@ -13,11 +13,13 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { useRouter } from "next/navigation"
-import { FolderUp, UploadCloud } from "lucide-react"
+import { Trash2, UploadCloud } from "lucide-react"
 import {
   assignToMeAction,
+  startTaskAction,
   submitForQCAction,
   approveSubmissionAction,
+  markClientReadyAction,
   sendBackAction,
   closeTaskAction,
   reopenForClientRevisionAction,
@@ -26,6 +28,7 @@ import {
 type Props = {
   task: {
     id: string
+    readable_id?: string
     status: string
     assigned_to: string | null
     drive_folder_link?: string | null
@@ -34,6 +37,139 @@ type Props = {
   pendingSubmission: { id: string; drive_link: string } | null
   designers: { id: string; name: string }[]
   currentPoints: number
+}
+
+function filterValidCadFiles(files: File[]) {
+  return files.filter((file) => file.size > 0 && !file.name.startsWith("."))
+}
+
+function CadUploadPicker({
+  selectedFiles,
+  onAddFiles,
+  onRemoveFile,
+  folderInputId,
+  filesInputId,
+  disabled,
+}: {
+  selectedFiles: File[]
+  onAddFiles: (files: File[], append: boolean) => void
+  onRemoveFile: (index: number) => void
+  folderInputId: string
+  filesInputId: string
+  disabled?: boolean
+}) {
+  const appendMode = selectedFiles.length > 0
+
+  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const validFiles = filterValidCadFiles(Array.from(e.target.files || []))
+    if (validFiles.length > 0) {
+      onAddFiles(validFiles, appendMode)
+    }
+    e.target.value = ""
+  }
+
+  const handleDrop = (e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault()
+    if (disabled) return
+    const dropped = filterValidCadFiles(Array.from(e.dataTransfer.files || []))
+    if (dropped.length > 0) {
+      onAddFiles(dropped, appendMode)
+    }
+  }
+
+  return (
+    <div
+      className="rounded-lg border-2 border-dashed border-primary/30 bg-background transition-colors hover:border-primary/50"
+      onDragOver={(e) => e.preventDefault()}
+      onDrop={handleDrop}
+    >
+      <input
+        id={folderInputId}
+        type="file"
+        // @ts-expect-error webkitdirectory is supported in modern browsers
+        webkitdirectory=""
+        directory=""
+        multiple
+        onChange={handleInputChange}
+        className="hidden"
+        disabled={disabled}
+      />
+      <input
+        id={filesInputId}
+        type="file"
+        multiple
+        onChange={handleInputChange}
+        className="hidden"
+        disabled={disabled}
+      />
+
+      {selectedFiles.length > 0 && (
+        <div className="p-2.5 pb-0">
+          <p className="text-xs font-semibold text-foreground mb-2">
+            {selectedFiles.length} file(s) selected
+          </p>
+          <ul className="max-h-40 overflow-y-auto space-y-1">
+            {selectedFiles.map((file, index) => (
+              <li
+                key={`${file.webkitRelativePath || file.name}-${index}`}
+                className="flex items-center gap-2 rounded-md border border-border/60 bg-muted/30 px-2 py-1"
+              >
+                <span className="truncate flex-1 font-mono text-[11px] text-muted-foreground">
+                  {file.webkitRelativePath || file.name}
+                </span>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  className="h-7 w-7 shrink-0 text-destructive hover:text-destructive hover:bg-destructive/10"
+                  onClick={() => onRemoveFile(index)}
+                  disabled={disabled}
+                  aria-label="Remove file"
+                >
+                  <Trash2 className="h-3.5 w-3.5" />
+                </Button>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      <div
+        className={`flex flex-col items-center justify-center px-4 py-4 text-center ${
+          selectedFiles.length > 0 ? "border-t border-border/60 mt-2" : ""
+        }`}
+      >
+        <UploadCloud className="h-6 w-6 text-primary mb-1.5" />
+        <p className="text-xs font-medium text-foreground">
+          {selectedFiles.length > 0
+            ? "Add more CAD files or folder"
+            : "Add CAD files or folder"}
+        </p>
+        <p className="text-[10px] text-muted-foreground mt-0.5 mb-2">
+          Drag & drop here, or browse below
+        </p>
+        <div className="flex items-center gap-1.5 text-xs">
+          <button
+            type="button"
+            className="font-medium text-primary hover:underline disabled:opacity-50"
+            disabled={disabled}
+            onClick={() => document.getElementById(filesInputId)?.click()}
+          >
+            Browse files
+          </button>
+          <span className="text-muted-foreground">·</span>
+          <button
+            type="button"
+            className="font-medium text-primary hover:underline disabled:opacity-50"
+            disabled={disabled}
+            onClick={() => document.getElementById(folderInputId)?.click()}
+          >
+            Browse folder
+          </button>
+        </div>
+      </div>
+    </div>
+  )
 }
 
 export function TaskActions({
@@ -63,11 +199,13 @@ export function TaskActions({
   const isDesigner = session.roles.includes("designer")
   // QC can also work on tasks as a designer
   const canWork = isDesigner || isQC
-  const isAssignedWorker = task.assigned_to === session.id
+  const isAssignedWorker =
+    task.assigned_to !== null && String(task.assigned_to) === String(session.id)
   const isUnassignedTask = task.assigned_to === null
 
-  // Keep legacy alias used in JSX below
   const isAssignedDesigner = isAssignedWorker
+
+  const apiTaskKey = task.id || task.readable_id || ""
 
   function run(fn: () => Promise<{ error?: string } | void | undefined>) {
     setError(null)
@@ -82,12 +220,18 @@ export function TaskActions({
     })
   }
 
-  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const rawFiles = Array.from(e.target.files || [])
-    const validFiles = rawFiles.filter(
-      (file) => file.size > 0 && !file.name.startsWith(".")
-    )
-    setSelectedFiles(validFiles)
+  const addCadFiles = (files: File[], append: boolean) => {
+    const validFiles = filterValidCadFiles(files)
+    if (validFiles.length === 0) return
+    if (append) {
+      setSelectedFiles((prev) => [...prev, ...validFiles])
+    } else {
+      setSelectedFiles(validFiles)
+    }
+  }
+
+  const removeSelectedFile = (index: number) => {
+    setSelectedFiles((prev) => prev.filter((_, i) => i !== index))
   }
 
   const [uploadStatus, setUploadStatus] = useState<string | null>(null)
@@ -115,7 +259,7 @@ export function TaskActions({
 
             // Step 1: Request presigned upload URL from server
             const presignedRes = await fetch(
-              `/api/tasks/${task.id}/upload/presigned-url`,
+              `/api/tasks/${encodeURIComponent(apiTaskKey)}/upload/presigned-url`,
               {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
@@ -210,7 +354,7 @@ export function TaskActions({
                   `Uploading file ${i + 1}/${validFiles.length}: ${file.name} (${percent}%)...`
                 )
 
-                const res = await fetch(`/api/tasks/${task.id}/upload`, {
+                const res = await fetch(`/api/tasks/${encodeURIComponent(apiTaskKey)}/upload`, {
                   method: "POST",
                   headers: {
                     "Content-Type": "application/octet-stream",
@@ -243,7 +387,7 @@ export function TaskActions({
           if (usedPresigned && lastUploadedUrl) {
             setUploadStatus("Finalizing submission...")
             const completeRes = await fetch(
-              `/api/tasks/${task.id}/upload/complete`,
+              `/api/tasks/${encodeURIComponent(apiTaskKey)}/upload/complete`,
               {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
@@ -315,21 +459,60 @@ export function TaskActions({
       )}
 
       <div className="flex flex-col gap-3">
-        {/* Designer/QC: Assign to me */}
-        {task.status === "assigned" &&
-          (isAssignedDesigner || (canWork && isUnassignedTask)) && (
+        {/* Designer/QC: Self-assign (does not start work timer) */}
+        {canWork &&
+          isUnassignedTask &&
+          (task.status === "assigned" ||
+            task.status === "revision_requested" ||
+            task.status === "in_progress") && (
             <div>
               <p className="mb-2 text-xs text-muted-foreground">
-                This task is waiting for you to accept it.
+                Claim this task to yourself before starting work.
               </p>
               <Button
                 onClick={() => run(() => assignToMeAction(task.id))}
                 disabled={isPending}
                 className="w-full bg-emerald-600 hover:bg-emerald-700 text-white"
               >
-                {isPending ? "Assigning…" : "Assign to Me & Start"}
+                {isPending ? "Assigning…" : "Assign to Me"}
               </Button>
             </div>
+          )}
+
+        {/* Designer/QC: Start work (timer begins here) */}
+        {isAssignedDesigner &&
+          (task.status === "assigned" || task.status === "revision_requested") && (
+            <div>
+              <p className="mb-2 text-xs text-muted-foreground">
+                Start working to begin tracking your CAD build time.
+              </p>
+              <Button
+                onClick={() => run(() => startTaskAction(task.id))}
+                disabled={isPending}
+                className="w-full"
+              >
+                {isPending ? "Starting…" : "Start"}
+              </Button>
+            </div>
+          )}
+
+        {!canWork &&
+          isUnassignedTask &&
+          !isManager &&
+          !isQC && (
+            <p className="text-xs text-muted-foreground">
+              This task is unassigned. A designer or QC member must claim and start it.
+            </p>
+          )}
+
+        {isManager &&
+          isUnassignedTask &&
+          !canWork &&
+          task.status !== "closed" &&
+          task.status !== "client_ready" && (
+            <p className="text-xs text-muted-foreground">
+              Task is unassigned. Designers or QC can use Assign to Me and Start from their account.
+            </p>
           )}
 
         {task.status === "in_progress" && isAssignedDesigner && (
@@ -340,51 +523,18 @@ export function TaskActions({
                   Linode Task Storage
                 </p>
                 <p className="text-xs text-muted-foreground mt-0.5">
-                  Select your CAD (.3dm, .glb) files or renders to upload directly into the task's Linode storage folder.
+                  Select a folder or individual CAD files to upload into Linode storage.
                 </p>
               </div>
 
-              <div className="flex flex-col gap-2">
-                <label
-                  htmlFor="cad_files_upload"
-                  className="flex cursor-pointer flex-col items-center justify-center rounded-lg border-2 border-dashed border-primary/30 p-4 text-center hover:border-primary hover:bg-primary/10 transition-colors bg-background"
-                >
-                  <FolderUp className="h-6 w-6 text-primary mb-1" />
-                  <span className="text-xs font-medium text-foreground">
-                    Select CAD Folder / Files
-                  </span>
-                  <span className="text-[10px] text-muted-foreground">
-                    Click to pick folder or CAD files
-                  </span>
-                  <input
-                    id="cad_files_upload"
-                    type="file"
-                    // @ts-expect-error webkitdirectory is supported in modern browsers
-                    webkitdirectory=""
-                    directory=""
-                    multiple
-                    onChange={handleFileSelect}
-                    className="hidden"
-                    disabled={isPending}
-                  />
-                </label>
-
-                {selectedFiles.length > 0 && (
-                  <div className="rounded-md border border-border bg-background p-2.5">
-                    <p className="text-xs font-semibold text-foreground mb-1">
-                      {selectedFiles.length} file(s) selected:
-                    </p>
-                    <ul className="max-h-24 overflow-y-auto text-[11px] text-muted-foreground space-y-0.5 font-mono">
-                      {selectedFiles.slice(0, 10).map((f, i) => (
-                        <li key={i} className="truncate">• {f.webkitRelativePath || f.name}</li>
-                      ))}
-                      {selectedFiles.length > 10 && (
-                        <li className="italic text-primary">...and {selectedFiles.length - 10} more files</li>
-                      )}
-                    </ul>
-                  </div>
-                )}
-              </div>
+              <CadUploadPicker
+                selectedFiles={selectedFiles}
+                onAddFiles={addCadFiles}
+                onRemoveFile={removeSelectedFile}
+                folderInputId="cad_files_upload_folder"
+                filesInputId="cad_files_upload_files"
+                disabled={isPending}
+              />
 
               <div className="flex flex-col gap-1.5 mt-1">
                 <Label htmlFor="designer_notes" className="text-xs font-medium">
@@ -432,51 +582,18 @@ export function TaskActions({
                   Linode Task Storage (Resubmission)
                 </p>
                 <p className="text-xs text-muted-foreground mt-0.5">
-                  Select your updated CAD (.3dm, .glb) files or folder to upload directly into the task's Linode storage folder.
+                  Select a folder or individual CAD files to upload for resubmission.
                 </p>
               </div>
 
-              <div className="flex flex-col gap-2">
-                <label
-                  htmlFor="cad_files_resubmit"
-                  className="flex cursor-pointer flex-col items-center justify-center rounded-lg border-2 border-dashed border-primary/30 p-4 text-center hover:border-primary hover:bg-primary/10 transition-colors bg-background"
-                >
-                  <FolderUp className="h-6 w-6 text-primary mb-1" />
-                  <span className="text-xs font-medium text-foreground">
-                    Select Updated CAD Folder / Files
-                  </span>
-                  <span className="text-[10px] text-muted-foreground">
-                    Click to pick folder or CAD files for resubmission
-                  </span>
-                  <input
-                    id="cad_files_resubmit"
-                    type="file"
-                    // @ts-expect-error webkitdirectory is supported in modern browsers
-                    webkitdirectory=""
-                    directory=""
-                    multiple
-                    onChange={handleFileSelect}
-                    className="hidden"
-                    disabled={isPending}
-                  />
-                </label>
-
-                {selectedFiles.length > 0 && (
-                  <div className="rounded-md border border-border bg-background p-2.5">
-                    <p className="text-xs font-semibold text-foreground mb-1">
-                      {selectedFiles.length} file(s) selected:
-                    </p>
-                    <ul className="max-h-24 overflow-y-auto text-[11px] text-muted-foreground space-y-0.5 font-mono">
-                      {selectedFiles.slice(0, 10).map((f, i) => (
-                        <li key={i} className="truncate">• {f.webkitRelativePath || f.name}</li>
-                      ))}
-                      {selectedFiles.length > 10 && (
-                        <li className="italic text-primary">...and {selectedFiles.length - 10} more files</li>
-                      )}
-                    </ul>
-                  </div>
-                )}
-              </div>
+              <CadUploadPicker
+                selectedFiles={selectedFiles}
+                onAddFiles={addCadFiles}
+                onRemoveFile={removeSelectedFile}
+                folderInputId="cad_files_resubmit_folder"
+                filesInputId="cad_files_resubmit_files"
+                disabled={isPending}
+              />
 
               <div className="flex flex-col gap-1.5 mt-1">
                 <Label htmlFor="folder_path_resubmit" className="text-xs font-medium">
@@ -521,10 +638,8 @@ export function TaskActions({
         )}
 
 
-        {/* QC / Manager: Approve or Send Back */}
-        {task.status === "in_qc_review" &&
-          (isQC || isManager) &&
-          pendingSubmission && (
+        {/* QC: Approve → Ready for Client */}
+        {task.status === "in_qc_review" && isQC && pendingSubmission && (
             <div className="flex flex-col gap-3">
               <p className="text-sm text-muted-foreground">
                 Review the submitted CAD and take action.
@@ -538,9 +653,9 @@ export function TaskActions({
                       )
                     }
                     disabled={isPending}
-                    className="bg-emerald-600 text-white hover:bg-emerald-700"
+                    className="bg-teal-600 text-white hover:bg-teal-700"
                   >
-                    {isPending ? "Approving…" : "Approve"}
+                    {isPending ? "Approving…" : "Approve (Ready for Client)"}
                   </Button>
                   <Button
                     variant="outline"
@@ -586,6 +701,81 @@ export function TaskActions({
             </div>
           )}
 
+        {/* Manager: Send back while in QC (cannot approve — QC moves to Ready for Client) */}
+        {task.status === "in_qc_review" &&
+          isManager &&
+          !isQC &&
+          pendingSubmission && (
+            <div className="flex flex-col gap-3">
+              <p className="text-sm text-muted-foreground">
+                Waiting for QC approval. You can send the task back to the designer if needed.
+              </p>
+              {!showSendBack ? (
+                <Button
+                  variant="outline"
+                  onClick={() => setShowSendBack(true)}
+                  disabled={isPending}
+                  className="border-destructive/40 text-destructive hover:bg-destructive/10"
+                >
+                  Send Back
+                </Button>
+              ) : (
+                <div className="flex flex-col gap-2">
+                  <Textarea
+                    placeholder="Describe the issues clearly for the designer..."
+                    value={remarks}
+                    onChange={(e) => setRemarks(e.target.value)}
+                    rows={3}
+                    disabled={isPending}
+                  />
+                  <div className="flex gap-2">
+                    <Button
+                      variant="outline"
+                      className="border-destructive/40 text-destructive hover:bg-destructive/10"
+                      onClick={() =>
+                        run(() =>
+                          sendBackAction(task.id, pendingSubmission.id, remarks)
+                        )
+                      }
+                      disabled={isPending || !remarks.trim()}
+                    >
+                      {isPending ? "Sending…" : "Send Back with Remarks"}
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      onClick={() => setShowSendBack(false)}
+                      disabled={isPending}
+                    >
+                      Cancel
+                    </Button>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+        {/* Manager: Ready for Client → Client Ready */}
+        {task.status === "ready_for_client" && isManager && (
+          <div className="flex flex-col gap-2">
+            <p className="text-sm text-muted-foreground">
+              QC approved this task. Mark it as Client Ready once it is ready to deliver.
+            </p>
+            <Button
+              onClick={() => run(() => markClientReadyAction(task.id))}
+              disabled={isPending}
+              className="bg-emerald-600 text-white hover:bg-emerald-700"
+            >
+              {isPending ? "Updating…" : "Approve — Mark as Client Ready"}
+            </Button>
+          </div>
+        )}
+
+        {task.status === "ready_for_client" && isQC && !isManager && (
+          <p className="text-sm text-muted-foreground">
+            Approved — waiting for a manager to mark this task as Client Ready.
+          </p>
+        )}
+
         {/* Manager: Close task */}
         {task.status === "client_ready" && isManager && (
           <div className="flex flex-col gap-2">
@@ -603,7 +793,9 @@ export function TaskActions({
         )}
 
         {/* Manager/QC: Client revision on closed/client_ready task */}
-        {(task.status === "closed" || task.status === "client_ready") &&
+        {(task.status === "closed" ||
+          task.status === "client_ready" ||
+          task.status === "ready_for_client") &&
           (isManager || isQC) && (
             <div className="flex flex-col gap-2 border-t border-border pt-3">
               {!showReopen ? (

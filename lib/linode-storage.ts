@@ -249,6 +249,59 @@ export async function getTaskFileStream(key: string) {
   }
 }
 
+/** Overwrite an existing object at the same S3 key (QC file replace). */
+export async function replaceTaskFileAtKey(
+  key: string,
+  buffer: Buffer,
+  contentType?: string
+): Promise<string> {
+  const config = getStorageConfig()
+  if (!config || !config.bucket) {
+    throw new Error("Linode Object Storage credentials are not configured.")
+  }
+
+  const { client, region, bucket } = config
+  const finalContentType = contentType || getContentType(path.basename(key))
+
+  await client.send(
+    new PutObjectCommand({
+      Bucket: bucket,
+      Key: key,
+      Body: buffer,
+      ContentType: finalContentType,
+      ACL: "public-read",
+    })
+  )
+
+  return `https://${bucket}.${region}.linodeobjects.com/${key}`
+}
+
+/** Presigned PUT URL to overwrite an existing object key (for large QC file replacements). */
+export async function generatePresignedReplaceUrl(
+  key: string,
+  contentType?: string
+): Promise<{ presignedUrl: string; fileUrl: string }> {
+  const config = getStorageConfig()
+  if (!config || !config.bucket) {
+    throw new Error("Linode Object Storage credentials are not configured.")
+  }
+
+  const { client, region, bucket } = config
+  const finalContentType = contentType || getContentType(path.basename(key))
+
+  const command = new PutObjectCommand({
+    Bucket: bucket,
+    Key: key,
+    ContentType: finalContentType,
+    ACL: "public-read",
+  })
+
+  const presignedUrl = await getSignedUrl(client, command, { expiresIn: 900 })
+  const fileUrl = `https://${bucket}.${region}.linodeobjects.com/${key}`
+
+  return { presignedUrl, fileUrl }
+}
+
 /**
  * Uploads compressed image buffer to Linode Object Storage.
  * If credentials are not present in .env, falls back to local /public/uploads directory.

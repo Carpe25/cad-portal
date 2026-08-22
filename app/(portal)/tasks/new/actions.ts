@@ -9,6 +9,7 @@ import path from "path"
 
 import { compressImage } from "@/lib/image-compress"
 import { uploadToReferenceStorage, createTaskFolderInStorage } from "@/lib/linode-storage"
+import { serializeDeliverables, parseDeliverables, type DeliverableItem } from "@/lib/deliverables"
 
 export async function ensureTaskTableColumns() {
   await sql`
@@ -24,6 +25,9 @@ export async function ensureTaskTableColumns() {
     ADD COLUMN IF NOT EXISTS cd_project_no TEXT,
     ADD COLUMN IF NOT EXISTS request_date DATE,
     ADD COLUMN IF NOT EXISTS reference_image TEXT,
+    ADD COLUMN IF NOT EXISTS client_reference_images TEXT,
+    ADD COLUMN IF NOT EXISTS self_reference_images TEXT,
+    ADD COLUMN IF NOT EXISTS deliverables TEXT,
     ADD COLUMN IF NOT EXISTS assigned_at TIMESTAMPTZ,
     ADD COLUMN IF NOT EXISTS closed_at TIMESTAMPTZ;
   `
@@ -107,6 +111,9 @@ export type CreateTaskPayload = {
   referenceImageBase64?: string | null
   referenceImageName?: string | null
   referenceImageUrls?: string[] | null
+  clientReferenceImageUrls?: string[] | null
+  selfReferenceImageUrls?: string[] | null
+  deliverables?: DeliverableItem[] | null
 }
 
 
@@ -141,7 +148,9 @@ export async function createTaskAction(data: CreateTaskPayload | FormData) {
   let assignedTo: string | null = null
   let priority = "medium"
   let referenceImageUrl: string | null = null
-  const referenceUrls: string[] = []
+  const clientReferenceUrls: string[] = []
+  const selfReferenceUrls: string[] = []
+  let deliverablesJson: string | null = null
 
   if (data instanceof FormData) {
     customerProjectNo = (data.get("customer_project_no") as string) || null
@@ -165,6 +174,12 @@ export async function createTaskAction(data: CreateTaskPayload | FormData) {
     driveFolderLink = (data.get("drive_folder_link") as string) || null
     assignedTo = (data.get("assigned_to") as string) || null
     priority = speed === "U" ? "high" : "medium"
+
+    const deliverablesRaw = data.get("deliverables") as string
+    if (deliverablesRaw) {
+      const parsed = parseDeliverables(deliverablesRaw)
+      if (parsed.length > 0) deliverablesJson = serializeDeliverables(parsed)
+    }
   } else {
     customerProjectNo = data.customer_project_no || null
     speed = data.speed || null
@@ -186,6 +201,9 @@ export async function createTaskAction(data: CreateTaskPayload | FormData) {
     driveFolderLink = data.drive_folder_link || null
     assignedTo = data.assigned_to || null
     priority = speed === "U" ? "high" : "medium"
+    if (data.deliverables?.length) {
+      deliverablesJson = serializeDeliverables(data.deliverables)
+    }
   }
 
   if (!clientName) {
@@ -201,13 +219,15 @@ export async function createTaskAction(data: CreateTaskPayload | FormData) {
       title, client_name, style_ref_number, description, points,
       priority, deadline, drive_folder_link, assigned_to, assigned_at, created_by, status,
       customer_project_no, speed, customer_code, category_code, complexity,
-      work_type, version, sr_no, cd_project_no, request_date, reference_image
+      work_type, version, sr_no, cd_project_no, request_date, reference_image,
+      client_reference_images, self_reference_images, deliverables
     ) VALUES (
       ${title}, ${clientName}, ${styleRefNumber}, ${description},
       ${points}, ${priority}, ${deadline}, ${driveFolderLink},
       ${assignedTo}, ${assignedAtValue}, ${session.id}, ${initialStatus},
       ${customerProjectNo}, ${speed}, ${customerCode}, ${categoryCode}, ${complexity},
-      ${workType}, ${version}, ${srNo}, ${cdProjectNo}, ${requestDate}, NULL
+      ${workType}, ${version}, ${srNo}, ${cdProjectNo}, ${requestDate}, NULL,
+      NULL, NULL, ${deliverablesJson}
     )
     RETURNING id
   `
@@ -226,33 +246,81 @@ export async function createTaskAction(data: CreateTaskPayload | FormData) {
 
   await createTaskFolderInStorage(taskId, linodeFolderName)
 
-  // 3. Collect reference images (both pre-uploaded presigned URLs and raw uploaded files)
+  // 3. Collect reference images (client + self, presigned URLs and raw uploads)
   if (data instanceof FormData) {
-    const preUploadedUrls = data.getAll("reference_image_url") as string[]
-    if (preUploadedUrls && preUploadedUrls.length > 0) {
-      referenceUrls.push(...preUploadedUrls.filter(Boolean))
+    const clientPreUploaded = data.getAll("client_reference_image_url") as string[]
+    if (clientPreUploaded.length > 0) {
+      clientReferenceUrls.push(...clientPreUploaded.filter(Boolean))
+    }
+    const selfPreUploaded = data.getAll("self_reference_image_url") as string[]
+    if (selfPreUploaded.length > 0) {
+      selfReferenceUrls.push(...selfPreUploaded.filter(Boolean))
     }
 
-    const imageFiles = data.getAll("reference_image") as File[]
-    for (let i = 0; i < imageFiles.length; i++) {
-      const imageFile = imageFiles[i]
+    const legacyUrls = data.getAll("reference_image_url") as string[]
+    if (legacyUrls.length > 0) {
+      clientReferenceUrls.push(...legacyUrls.filter(Boolean))
+    }
+
+    const clientFiles = data.getAll("client_reference_image") as File[]
+    for (let i = 0; i < clientFiles.length; i++) {
+      const imageFile = clientFiles[i]
       if (imageFile && imageFile.size > 0) {
         try {
           const bytes = await imageFile.arrayBuffer()
           const inputBuffer = Buffer.from(bytes)
           const { compressedBuffer, ext } = await compressImage(inputBuffer, imageFile.name)
+          const safeFilename = `${Date.now()}_${i}_client${ext}`
+          const storedUrl = await uploadToReferenceStorage(compressedBuffer, safeFilename, ext, taskId)
+          clientReferenceUrls.push(storedUrl)
+        } catch (uploadErr) {
+          console.error("Error saving client reference image:", uploadErr)
+        }
+      }
+    }
 
+    const selfFiles = data.getAll("self_reference_image") as File[]
+    for (let i = 0; i < selfFiles.length; i++) {
+      const imageFile = selfFiles[i]
+      if (imageFile && imageFile.size > 0) {
+        try {
+          const bytes = await imageFile.arrayBuffer()
+          const inputBuffer = Buffer.from(bytes)
+          const { compressedBuffer, ext } = await compressImage(inputBuffer, imageFile.name)
+          const safeFilename = `${Date.now()}_${i}_self${ext}`
+          const storedUrl = await uploadToReferenceStorage(compressedBuffer, safeFilename, ext, taskId)
+          selfReferenceUrls.push(storedUrl)
+        } catch (uploadErr) {
+          console.error("Error saving self reference image:", uploadErr)
+        }
+      }
+    }
+
+    const legacyFiles = data.getAll("reference_image") as File[]
+    for (let i = 0; i < legacyFiles.length; i++) {
+      const imageFile = legacyFiles[i]
+      if (imageFile && imageFile.size > 0) {
+        try {
+          const bytes = await imageFile.arrayBuffer()
+          const inputBuffer = Buffer.from(bytes)
+          const { compressedBuffer, ext } = await compressImage(inputBuffer, imageFile.name)
           const safeFilename = `${Date.now()}_${i}_img${ext}`
           const storedUrl = await uploadToReferenceStorage(compressedBuffer, safeFilename, ext, taskId)
-          referenceUrls.push(storedUrl)
+          clientReferenceUrls.push(storedUrl)
         } catch (uploadErr) {
           console.error("Error saving reference image file:", uploadErr)
         }
       }
     }
   } else {
-    if (data.referenceImageUrls && Array.isArray(data.referenceImageUrls)) {
-      referenceUrls.push(...data.referenceImageUrls.filter(Boolean))
+    if (data.clientReferenceImageUrls?.length) {
+      clientReferenceUrls.push(...data.clientReferenceImageUrls.filter(Boolean))
+    }
+    if (data.selfReferenceImageUrls?.length) {
+      selfReferenceUrls.push(...data.selfReferenceImageUrls.filter(Boolean))
+    }
+    if (data.referenceImageUrls?.length) {
+      clientReferenceUrls.push(...data.referenceImageUrls.filter(Boolean))
     }
 
     const base64List = data.referenceImageBase64s || (data.referenceImageBase64 ? [data.referenceImageBase64] : [])
@@ -263,10 +331,9 @@ export async function createTaskAction(data: CreateTaskPayload | FormData) {
           const base64Data = b64.replace(/^data:image\/\w+;base64,/, "")
           const inputBuffer = Buffer.from(base64Data, "base64")
           const { compressedBuffer, ext } = await compressImage(inputBuffer)
-
           const safeFilename = `${Date.now()}_${i}_img${ext}`
           const storedUrl = await uploadToReferenceStorage(compressedBuffer, safeFilename, ext, taskId)
-          referenceUrls.push(storedUrl)
+          clientReferenceUrls.push(storedUrl)
         } catch (uploadErr) {
           console.error("Error saving base64 reference image:", uploadErr)
         }
@@ -274,11 +341,20 @@ export async function createTaskAction(data: CreateTaskPayload | FormData) {
     }
   }
 
+  const clientJson =
+    clientReferenceUrls.length > 0 ? JSON.stringify(clientReferenceUrls) : null
+  const selfJson =
+    selfReferenceUrls.length > 0 ? JSON.stringify(selfReferenceUrls) : null
 
-  if (referenceUrls.length > 0) {
-    referenceImageUrl = JSON.stringify(referenceUrls)
+  if (clientJson || selfJson) {
+    referenceImageUrl = clientJson
     await sql`
-      UPDATE tasks SET reference_image = ${referenceImageUrl} WHERE id = ${taskId}
+      UPDATE tasks
+      SET
+        reference_image = ${clientJson},
+        client_reference_images = ${clientJson},
+        self_reference_images = ${selfJson}
+      WHERE id = ${taskId}
     `
   }
 

@@ -345,6 +345,7 @@ const STATUS_DOT: Record<string, string> = {
   in_progress: "bg-blue-500",
   in_qc_review: "bg-amber-500",
   revision_requested: "bg-red-500",
+  ready_for_client: "bg-teal-500",
   client_ready: "bg-emerald-500",
   closed: "bg-slate-300",
 }

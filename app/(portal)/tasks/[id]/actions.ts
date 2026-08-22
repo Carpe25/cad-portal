@@ -5,6 +5,12 @@ import { revalidatePath } from "next/cache"
 import { sql } from "@/lib/db"
 import { getSession } from "@/lib/session"
 import { normalizeDeadlineForDb, normalizeRequestDateForDb, isVersionV2OrHigher } from "@/lib/task-utils"
+import {
+  startTimeLog,
+  endActiveTimeLogs,
+  recordQcReviewTime,
+} from "@/lib/time-tracking"
+import { parseDeliverables, serializeDeliverables } from "@/lib/deliverables"
 
 export async function assignToMeAction(taskId: string) {
   try {
@@ -21,7 +27,11 @@ export async function assignToMeAction(taskId: string) {
     if (rows.length === 0) return { error: "Task not found" }
 
     const task = rows[0] as { assigned_to: string | null; status: string }
-    if (task.status !== "assigned") {
+    if (
+      task.status !== "assigned" &&
+      task.status !== "revision_requested" &&
+      !(task.status === "in_progress" && task.assigned_to === null)
+    ) {
       return { error: "This task is no longer available for assignment" }
     }
 
@@ -29,12 +39,15 @@ export async function assignToMeAction(taskId: string) {
       return { error: "This task is assigned to another designer" }
     }
 
-    // Set assigned_to to designer's ID and status to in_progress
     await sql`
       UPDATE tasks
-      SET assigned_to = ${session.id}, status = 'in_progress', assigned_at = NOW()
-      WHERE id = ${taskId} AND status = 'assigned'
+      SET assigned_to = ${session.id}, assigned_at = NOW()
+      WHERE id = ${taskId}
         AND (assigned_to IS NULL OR assigned_to = ${session.id})
+        AND (
+          status IN ('assigned', 'revision_requested')
+          OR (status = 'in_progress' AND assigned_to IS NULL)
+        )
     `
 
     revalidatePath(`/tasks/${taskId}`)
@@ -45,6 +58,44 @@ export async function assignToMeAction(taskId: string) {
   } catch (err: any) {
     console.error("assignToMeAction error:", err)
     return { error: err.message || "Failed to assign task." }
+  }
+}
+
+
+export async function startTaskAction(taskId: string) {
+  try {
+    const session = await getSession()
+    if (!session) return { error: "Unauthorized" }
+    const canWork =
+      session.roles.includes("designer") || session.roles.includes("qc")
+    if (!canWork) return { error: "Unauthorized" }
+
+    const rows = await sql`
+      SELECT assigned_to, status FROM tasks WHERE id = ${taskId}
+    `
+    if (rows.length === 0) return { error: "Task not found" }
+
+    const task = rows[0] as { assigned_to: string | null; status: string }
+    if (task.assigned_to !== session.id) {
+      return { error: "Assign this task to yourself before starting" }
+    }
+    if (task.status !== "assigned" && task.status !== "revision_requested") {
+      return { error: "This task cannot be started in its current status" }
+    }
+
+    await sql`
+      UPDATE tasks SET status = 'in_progress' WHERE id = ${taskId}
+    `
+
+    await startTimeLog(taskId, session.id, "designer")
+
+    revalidatePath(`/tasks/${taskId}`)
+    revalidatePath("/tasks")
+    revalidatePath("/dashboard")
+    return { success: true }
+  } catch (err: any) {
+    console.error("startTaskAction error:", err)
+    return { error: err.message || "Failed to start task." }
   }
 }
 
@@ -80,6 +131,8 @@ export async function submitForQCAction(
   await sql`
     UPDATE tasks SET status = 'in_qc_review' WHERE id = ${taskId}
   `
+
+  await endActiveTimeLogs(taskId, "designer", session.id)
 
   revalidatePath(`/tasks/${taskId}`)
   revalidatePath("/tasks")
@@ -147,6 +200,8 @@ export async function submitForQCWithFilesAction(formData: FormData) {
     UPDATE tasks SET status = 'in_qc_review' WHERE id = ${taskId}
   `
 
+  await endActiveTimeLogs(taskId, "designer", session.id)
+
   revalidatePath(`/tasks/${taskId}`)
   revalidatePath("/tasks")
 }
@@ -158,11 +213,8 @@ export async function approveSubmissionAction(
 ) {
   try {
     const session = await getSession()
-    if (
-      !session ||
-      (!session.roles.includes("qc") && !session.roles.includes("manager"))
-    ) {
-      return { error: "Unauthorized" }
+    if (!session || !session.roles.includes("qc")) {
+      return { error: "Only QC users can approve submissions" }
     }
 
     // Drop restrictive check constraint if present in DB schema
@@ -185,9 +237,9 @@ export async function approveSubmissionAction(
 
     // Get submission info to identify submitted_by as fallback
     const subRows = await sql`
-      SELECT submitted_by FROM submissions WHERE id = ${submissionId}
+      SELECT submitted_by, submitted_at FROM submissions WHERE id = ${submissionId}
     `
-    const submission = subRows[0] as { submitted_by: string } | undefined
+    const submission = subRows[0] as { submitted_by: string; submitted_at: string } | undefined
 
     const recipientId = task.assigned_to || submission?.submitted_by || session.id
 
@@ -201,11 +253,11 @@ export async function approveSubmissionAction(
     // Update task status, and assign task if it was unassigned
     if (recipientId && !task.assigned_to) {
       await sql`
-        UPDATE tasks SET status = 'client_ready', assigned_to = ${recipientId} WHERE id = ${taskId}
+        UPDATE tasks SET status = 'ready_for_client', assigned_to = ${recipientId} WHERE id = ${taskId}
       `
     } else {
       await sql`
-        UPDATE tasks SET status = 'client_ready' WHERE id = ${taskId}
+        UPDATE tasks SET status = 'ready_for_client' WHERE id = ${taskId}
       `
     }
 
@@ -229,13 +281,49 @@ export async function approveSubmissionAction(
       }
     }
 
+    if (submission?.submitted_at) {
+      await recordQcReviewTime(taskId, session.id, submission.submitted_at)
+    }
+
     revalidatePath(`/tasks/${taskId}`)
     revalidatePath("/tasks")
     revalidatePath("/qc-queue")
+    revalidatePath("/dashboard")
     return { success: true }
   } catch (err: any) {
     console.error("Error approving submission:", err)
     return { error: err.message || "Failed to approve task submission." }
+  }
+}
+
+export async function markClientReadyAction(taskId: string) {
+  try {
+    const session = await getSession()
+    if (!session || !session.roles.includes("manager")) {
+      return { error: "Only managers can mark tasks as Client Ready" }
+    }
+
+    const taskRows = await sql`
+      SELECT status FROM tasks WHERE id = ${taskId}
+    `
+    if (!taskRows.length) return { error: "Task not found" }
+
+    const task = taskRows[0] as { status: string }
+    if (task.status !== "ready_for_client") {
+      return { error: "Task is not in Ready for Client status" }
+    }
+
+    await sql`
+      UPDATE tasks SET status = 'client_ready' WHERE id = ${taskId}
+    `
+
+    revalidatePath(`/tasks/${taskId}`)
+    revalidatePath("/tasks")
+    revalidatePath("/dashboard")
+    return { success: true }
+  } catch (err: any) {
+    console.error("Error marking task client ready:", err)
+    return { error: err.message || "Failed to mark task as client ready." }
   }
 }
 
@@ -273,6 +361,14 @@ export async function sendBackAction(
     await sql`
       UPDATE tasks SET status = 'revision_requested' WHERE id = ${taskId}
     `
+
+    const subRows = await sql`
+      SELECT submitted_at FROM submissions WHERE id = ${submissionId}
+    `
+    const submission = subRows[0] as { submitted_at: string } | undefined
+    if (submission?.submitted_at) {
+      await recordQcReviewTime(taskId, session.id, submission.submitted_at)
+    }
 
     revalidatePath(`/tasks/${taskId}`)
     revalidatePath("/tasks")
@@ -393,6 +489,7 @@ export async function updateTaskAction(
   let priority = "medium"
   let referenceImageUrl: string | null = currentTask.reference_image
   const newReferenceUrls: string[] = []
+  let deliverablesJson: string | null = null
 
   if (data instanceof FormData) {
     customerProjectNo = (data.get("customer_project_no") as string) || null
@@ -418,6 +515,12 @@ export async function updateTaskAction(
     assignedTo = (data.get("assigned_to") as string) || null
     priority = speed === "U" ? "high" : "medium"
 
+    const deliverablesRaw = data.get("deliverables") as string
+    if (deliverablesRaw) {
+      const parsed = parseDeliverables(deliverablesRaw)
+      if (parsed.length > 0) deliverablesJson = serializeDeliverables(parsed)
+    }
+
     const preUploadedUrls = data.getAll("reference_image_url") as string[]
     if (preUploadedUrls && preUploadedUrls.length > 0) {
       newReferenceUrls.push(...preUploadedUrls.filter(Boolean))
@@ -425,7 +528,6 @@ export async function updateTaskAction(
 
     const imageFiles = data.getAll("reference_image") as File[]
     if (imageFiles.length > 0) {
-
       const { compressImage } = await import("@/lib/image-compress")
       const { uploadToReferenceStorage } = await import("@/lib/linode-storage")
       for (let i = 0; i < imageFiles.length; i++) {
@@ -466,6 +568,10 @@ export async function updateTaskAction(
     driveFolderLink = data.drive_folder_link || null
     assignedTo = data.assigned_to || null
     priority = speed === "U" ? "high" : "medium"
+
+    if (data.deliverables?.length) {
+      deliverablesJson = serializeDeliverables(data.deliverables)
+    }
 
     if (data.referenceImageUrls && Array.isArray(data.referenceImageUrls)) {
       newReferenceUrls.push(...data.referenceImageUrls.filter(Boolean))
@@ -523,8 +629,17 @@ export async function updateTaskAction(
     }
   }
 
-  const shouldPromoteToRevision = isVersionV2OrHigher(version) && currentTask.status === "assigned"
-  const newStatus = shouldPromoteToRevision ? "revision_requested" : currentTask.status
+  const isUnassigning = !targetAssignedTo && currentTask.assigned_to
+
+  let newStatus = currentTask.status
+  if (isUnassigning) {
+    await endActiveTimeLogs(currentTask.id, "designer")
+    if (currentTask.status === "in_progress") {
+      newStatus = "assigned"
+    }
+  } else if (isVersionV2OrHigher(version) && currentTask.status === "assigned") {
+    newStatus = "revision_requested"
+  }
 
   await sql`
     UPDATE tasks
@@ -550,7 +665,8 @@ export async function updateTaskAction(
       sr_no = ${srNo},
       cd_project_no = ${cdProjectNo},
       request_date = ${requestDate},
-      reference_image = ${referenceImageUrl}
+      reference_image = ${referenceImageUrl},
+      deliverables = COALESCE(${deliverablesJson}, deliverables)
     WHERE id = ${currentTask.id}
   `
 

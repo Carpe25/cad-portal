@@ -17,9 +17,16 @@ import {
 } from "@/components/ui/select"
 import { Card, CardContent } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
-import { CalendarIcon, Image as ImageIcon, Sparkles, X, FolderPlus, Check, ArrowLeft, Save } from "lucide-react"
+import { CalendarIcon, Image as ImageIcon, Sparkles, X, FolderPlus, Check, ArrowLeft, Save, Plus, Trash2 } from "lucide-react"
 import Link from "next/link"
 import { parseDeadlineDate } from "@/lib/task-utils"
+import { Checkbox } from "@/components/ui/checkbox"
+import {
+  DEFAULT_DELIVERABLES,
+  parseDeliverables,
+  serializeDeliverables,
+  type DeliverableItem,
+} from "@/lib/deliverables"
 
 const CATEGORIES = [
   { code: "RN", label: "Ring" },
@@ -152,6 +159,7 @@ export type TaskData = {
   deadline: string | null
   drive_folder_link: string | null
   assigned_to: string | null
+  deliverables: string | null
 }
 
 export function EditTaskForm({
@@ -205,6 +213,14 @@ export function EditTaskForm({
   const [priority, setPriority] = useState(task.priority ?? "medium")
   const [assignedTo, setAssignedTo] = useState(task.assigned_to ?? "")
 
+  const existingDeliverables = parseDeliverables(task.deliverables)
+  const [deliverables, setDeliverables] = useState<DeliverableItem[]>(
+    existingDeliverables.length > 0
+      ? existingDeliverables
+      : DEFAULT_DELIVERABLES.map((d) => ({ ...d }))
+  )
+  const [newDeliverableLabel, setNewDeliverableLabel] = useState("")
+
   // Reference image files and previews state
   const [selectedImageFiles, setSelectedImageFiles] = useState<File[]>([])
   const [imagePreviews, setImagePreviews] = useState<string[]>([])
@@ -252,6 +268,21 @@ export function EditTaskForm({
   const handleCategoryChange = (code: string) => {
     setCategoryCode(code)
     setDeadline(calculateDeadlineDate(code, requestDate))
+  }
+
+  const addDeliverable = () => {
+    const label = newDeliverableLabel.trim()
+    if (!label) return
+    setDeliverables((prev) => [...prev, { id: `custom_${Date.now()}`, label, required: false }])
+    setNewDeliverableLabel("")
+  }
+
+  const updateDeliverable = (id: string, patch: Partial<DeliverableItem>) => {
+    setDeliverables((prev) => prev.map((d) => (d.id === id ? { ...d, ...patch } : d)))
+  }
+
+  const removeDeliverable = (id: string) => {
+    setDeliverables((prev) => prev.filter((d) => d.id !== id))
   }
 
   const handleRequestDateChange = (dateStr: string) => {
@@ -431,6 +462,7 @@ export function EditTaskForm({
         formData.append("points", points)
         formData.append("deadline", deadline)
         formData.append("drive_folder_link", driveLink)
+        formData.append("deliverables", serializeDeliverables(deliverables))
 
         uploadedUrls.forEach((url) => {
           formData.append("reference_image_url", url)
@@ -670,6 +702,65 @@ export function EditTaskForm({
                 onChange={(e) => setPoints(e.target.value)}
                 placeholder="0"
               />
+            </div>
+          </div>
+
+          {/* Deliverables checklist */}
+          <div className="flex flex-col gap-3 rounded-xl border border-border bg-muted/20 p-4">
+            <div>
+              <Label className="text-sm font-semibold">Required Deliverables</Label>
+              <p className="text-xs text-muted-foreground mt-0.5">
+                Edit what the designer must submit for this task.
+              </p>
+            </div>
+            <div className="space-y-2">
+              {deliverables.map((item) => (
+                <div key={item.id} className="flex items-center gap-2 rounded-lg border border-border bg-background px-3 py-2">
+                  <Checkbox
+                    id={`edit-deliverable-${item.id}`}
+                    checked={item.required}
+                    onCheckedChange={(checked) =>
+                      updateDeliverable(item.id, { required: Boolean(checked) })
+                    }
+                    disabled={isPending}
+                  />
+                  <Input
+                    value={item.label}
+                    onChange={(e) => updateDeliverable(item.id, { label: e.target.value })}
+                    className="h-8 text-xs flex-1"
+                    disabled={isPending}
+                  />
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    className="h-8 w-8 shrink-0 text-muted-foreground hover:text-destructive"
+                    onClick={() => removeDeliverable(item.id)}
+                    disabled={isPending}
+                  >
+                    <Trash2 className="h-3.5 w-3.5" />
+                  </Button>
+                </div>
+              ))}
+            </div>
+            <div className="flex gap-2">
+              <Input
+                placeholder="Add custom deliverable..."
+                value={newDeliverableLabel}
+                onChange={(e) => setNewDeliverableLabel(e.target.value)}
+                className="h-9 text-xs"
+                disabled={isPending}
+              />
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={addDeliverable}
+                disabled={isPending || !newDeliverableLabel.trim()}
+              >
+                <Plus className="h-3.5 w-3.5 mr-1" />
+                Add
+              </Button>
             </div>
           </div>
 

@@ -15,7 +15,13 @@ import {
 } from "@/components/ui/select"
 import { Card, CardContent } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
-import { CalendarIcon, Image as ImageIcon, Sparkles, X, FolderPlus, Check, Upload } from "lucide-react"
+import { CalendarIcon, Image as ImageIcon, Sparkles, X, FolderPlus, Check, Upload, Plus, Trash2 } from "lucide-react"
+import { Checkbox } from "@/components/ui/checkbox"
+import {
+  DEFAULT_DELIVERABLES,
+  serializeDeliverables,
+  type DeliverableItem,
+} from "@/lib/deliverables"
 
 
 
@@ -169,9 +175,17 @@ export function CreateTaskForm({
   const [priority, setPriority] = useState("medium")
   const [assignedTo, setAssignedTo] = useState("")
 
-  // Reference image files and previews state
-  const [selectedImageFiles, setSelectedImageFiles] = useState<File[]>([])
-  const [imagePreviews, setImagePreviews] = useState<string[]>([])
+  // Reference image files — client vs self
+  const [clientImageFiles, setClientImageFiles] = useState<File[]>([])
+  const [clientImagePreviews, setClientImagePreviews] = useState<string[]>([])
+  const [selfImageFiles, setSelfImageFiles] = useState<File[]>([])
+  const [selfImagePreviews, setSelfImagePreviews] = useState<string[]>([])
+
+  // Deliverables checklist
+  const [deliverables, setDeliverables] = useState<DeliverableItem[]>(
+    DEFAULT_DELIVERABLES.map((d) => ({ ...d }))
+  )
+  const [newDeliverableLabel, setNewDeliverableLabel] = useState("")
 
   // Sr. No. (4 digits e.g. 0001)
   const srNoFormatted = String(nextSrNoCount).padStart(4, "0")
@@ -236,14 +250,50 @@ export function CreateTaskForm({
   const previewOf = (file: File) =>
     file.type.startsWith("image/") ? URL.createObjectURL(file) : ""
 
-  const handleImageChange = (e: ChangeEvent<HTMLInputElement>) => {
+  const handleImageChange = (
+    e: ChangeEvent<HTMLInputElement>,
+    type: "client" | "self"
+  ) => {
     const files = Array.from(e.target.files || [])
     if (files.length === 0) return
 
     const newPreviews = files.map((file) => previewOf(file))
-    setSelectedImageFiles((prev) => [...prev, ...files])
-    setImagePreviews((prev) => [...prev, ...newPreviews])
+    if (type === "client") {
+      setClientImageFiles((prev) => [...prev, ...files])
+      setClientImagePreviews((prev) => [...prev, ...newPreviews])
+    } else {
+      setSelfImageFiles((prev) => [...prev, ...files])
+      setSelfImagePreviews((prev) => [...prev, ...newPreviews])
+    }
     e.target.value = ""
+  }
+
+  const removeImagePreview = (index: number, type: "client" | "self") => {
+    if (type === "client") {
+      setClientImageFiles((prev) => prev.filter((_, i) => i !== index))
+      setClientImagePreviews((prev) => prev.filter((_, i) => i !== index))
+    } else {
+      setSelfImageFiles((prev) => prev.filter((_, i) => i !== index))
+      setSelfImagePreviews((prev) => prev.filter((_, i) => i !== index))
+    }
+  }
+
+  const addDeliverable = () => {
+    const label = newDeliverableLabel.trim()
+    if (!label) return
+    const id = `custom_${Date.now()}`
+    setDeliverables((prev) => [...prev, { id, label, required: false }])
+    setNewDeliverableLabel("")
+  }
+
+  const updateDeliverable = (id: string, patch: Partial<DeliverableItem>) => {
+    setDeliverables((prev) =>
+      prev.map((d) => (d.id === id ? { ...d, ...patch } : d))
+    )
+  }
+
+  const removeDeliverable = (id: string) => {
+    setDeliverables((prev) => prev.filter((d) => d.id !== id))
   }
 
   // Auto generate Project No based on Speed, Customer Code, Category Code, Serial No, Version
@@ -275,12 +325,12 @@ export function CreateTaskForm({
     if (files.length === 0) return
 
     const newPreviews = files.map((file) => previewOf(file))
-    setSelectedImageFiles((prev) => [...prev, ...files])
-    setImagePreviews((prev) => [...prev, ...newPreviews])
+    setClientImageFiles((prev) => [...prev, ...files])
+    setClientImagePreviews((prev) => [...prev, ...newPreviews])
   }
 
   // Handle pasted images (copied from browser, screenshot, or clipboard)
-  const handlePasteImages = (e: React.ClipboardEvent | ClipboardEvent) => {
+  const handlePasteImages = (e: React.ClipboardEvent | ClipboardEvent, type: "client" | "self" = "client") => {
     const clipboardData = "clipboardData" in e ? e.clipboardData : null
     if (!clipboardData) return
 
@@ -311,8 +361,13 @@ export function CreateTaskForm({
         e.preventDefault()
       }
       const newPreviews = filesFromClipboard.map((file) => previewOf(file))
-      setSelectedImageFiles((prev) => [...prev, ...filesFromClipboard])
-      setImagePreviews((prev) => [...prev, ...newPreviews])
+      if (type === "client") {
+        setClientImageFiles((prev) => [...prev, ...filesFromClipboard])
+        setClientImagePreviews((prev) => [...prev, ...newPreviews])
+      } else {
+        setSelfImageFiles((prev) => [...prev, ...filesFromClipboard])
+        setSelfImagePreviews((prev) => [...prev, ...newPreviews])
+      }
       return
     }
 
@@ -335,8 +390,13 @@ export function CreateTaskForm({
             type: blob.type || "image/png",
           })
           const preview = URL.createObjectURL(file)
-          setSelectedImageFiles((prev) => [...prev, file])
-          setImagePreviews((prev) => [...prev, preview])
+          if (type === "client") {
+            setClientImageFiles((prev) => [...prev, file])
+            setClientImagePreviews((prev) => [...prev, preview])
+          } else {
+            setSelfImageFiles((prev) => [...prev, file])
+            setSelfImagePreviews((prev) => [...prev, preview])
+          }
         })
         .catch((err) => {
           console.error("Failed to convert pasted image URL to file:", err)
@@ -353,11 +413,6 @@ export function CreateTaskForm({
       window.removeEventListener("paste", onWindowPaste)
     }
   }, [])
-
-  const removeImagePreview = (index: number) => {
-    setSelectedImageFiles((prev) => prev.filter((_, i) => i !== index))
-    setImagePreviews((prev) => prev.filter((_, i) => i !== index))
-  }
 
   const [uploadStatus, setUploadStatus] = useState<string | null>(null)
 
@@ -413,9 +468,13 @@ export function CreateTaskForm({
 
     startTransition(async () => {
       try {
-        let uploadedUrls: string[] = []
-        if (selectedImageFiles.length > 0) {
-          uploadedUrls = await uploadReferenceImagesDirectly(selectedImageFiles)
+        let clientUrls: string[] = []
+        let selfUrls: string[] = []
+        if (clientImageFiles.length > 0) {
+          clientUrls = await uploadReferenceImagesDirectly(clientImageFiles)
+        }
+        if (selfImageFiles.length > 0) {
+          selfUrls = await uploadReferenceImagesDirectly(selfImageFiles)
         }
 
         setUploadStatus("Saving task details...")
@@ -438,10 +497,10 @@ export function CreateTaskForm({
         formData.append("points", points)
         formData.append("deadline", deadline)
         formData.append("drive_folder_link", driveLink)
+        formData.append("deliverables", serializeDeliverables(deliverables))
 
-        uploadedUrls.forEach((url) => {
-          formData.append("reference_image_url", url)
-        })
+        clientUrls.forEach((url) => formData.append("client_reference_image_url", url))
+        selfUrls.forEach((url) => formData.append("self_reference_image_url", url))
 
         const result = await createTaskAction(formData)
         if (result?.error) setError(result.error)
@@ -687,59 +746,159 @@ export function CreateTaskForm({
             </div>
           </div>
 
-          {/* Reference Image Upload Field with Drag & Drop */}
+          {/* Deliverables checklist */}
+          <div className="flex flex-col gap-3 rounded-xl border border-border bg-muted/20 p-4">
+            <div>
+              <Label className="text-sm font-semibold">Required Deliverables</Label>
+              <p className="text-xs text-muted-foreground mt-0.5">
+                Select what the designer must submit. Edit labels or add custom deliverables.
+              </p>
+            </div>
+            <div className="space-y-2">
+              {deliverables.map((item) => (
+                <div key={item.id} className="flex items-center gap-2 rounded-lg border border-border bg-background px-3 py-2">
+                  <Checkbox
+                    id={`deliverable-${item.id}`}
+                    checked={item.required}
+                    onCheckedChange={(checked) =>
+                      updateDeliverable(item.id, { required: Boolean(checked) })
+                    }
+                    disabled={isPending}
+                  />
+                  <Input
+                    value={item.label}
+                    onChange={(e) => updateDeliverable(item.id, { label: e.target.value })}
+                    className="h-8 text-xs flex-1"
+                    disabled={isPending}
+                  />
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    className="h-8 w-8 shrink-0 text-muted-foreground hover:text-destructive"
+                    onClick={() => removeDeliverable(item.id)}
+                    disabled={isPending}
+                  >
+                    <Trash2 className="h-3.5 w-3.5" />
+                  </Button>
+                </div>
+              ))}
+            </div>
+            <div className="flex gap-2">
+              <Input
+                placeholder="Add custom deliverable..."
+                value={newDeliverableLabel}
+                onChange={(e) => setNewDeliverableLabel(e.target.value)}
+                className="h-9 text-xs"
+                disabled={isPending}
+              />
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={addDeliverable}
+                disabled={isPending || !newDeliverableLabel.trim()}
+              >
+                <Plus className="h-3.5 w-3.5 mr-1" />
+                Add
+              </Button>
+            </div>
+          </div>
+
+          {/* Client reference images */}
           <div className="flex flex-col gap-2">
-            <Label htmlFor="reference_image">Reference Images</Label>
+            <Label htmlFor="client_reference_image">Client References</Label>
+            <p className="text-xs text-muted-foreground">
+              Images or files provided by the client for this job.
+            </p>
             <div className="flex flex-wrap items-start gap-4">
               <label
-                htmlFor="reference_image"
+                htmlFor="client_reference_image"
                 onDragOver={handleDragOver}
                 onDragLeave={handleDragLeave}
-                onDrop={handleDrop}
+                onDrop={(e) => {
+                  e.preventDefault()
+                  e.stopPropagation()
+                  setIsDragging(false)
+                  const files = Array.from(e.dataTransfer.files || [])
+                  const newPreviews = files.map((file) => previewOf(file))
+                  setClientImageFiles((prev) => [...prev, ...files])
+                  setClientImagePreviews((prev) => [...prev, ...newPreviews])
+                }}
                 className={`flex cursor-pointer flex-col items-center justify-center rounded-lg border-2 border-dashed p-4 text-center transition-all w-full sm:w-auto min-w-[220px] min-h-[100px] ${
                   isDragging
                     ? "border-primary bg-primary/10 ring-4 ring-primary/20 scale-[1.01]"
                     : "border-muted-foreground/25 hover:border-primary/50 hover:bg-muted/30"
                 }`}
               >
-                {isDragging ? (
-                  <Upload className="h-7 w-7 text-primary mb-1 animate-bounce" />
-                ) : (
-                  <ImageIcon className="h-6 w-6 text-muted-foreground mb-1" />
-                )}
-                <span className="text-xs font-medium text-foreground">
-                  {isDragging ? "Drop files here..." : "Upload or Drag & Drop Files"}
-                </span>
-                <span className="text-[10px] text-muted-foreground mt-0.5">
-                  Any file type (Multiple allowed)
-                </span>
+                <ImageIcon className="h-6 w-6 text-muted-foreground mb-1" />
+                <span className="text-xs font-medium text-foreground">Upload Client References</span>
                 <input
-                  id="reference_image"
-                  name="reference_image"
+                  id="client_reference_image"
+                  name="client_reference_image"
                   type="file"
                   multiple
-                  onChange={handleImageChange}
+                  onChange={(e) => handleImageChange(e, "client")}
                   className="hidden"
                   disabled={isPending}
                 />
               </label>
-
-              {imagePreviews.map((preview, index) => (
+              {clientImagePreviews.map((preview, index) => (
                 <div key={index} className="relative h-24 w-24 overflow-hidden rounded-lg border border-border bg-muted shrink-0">
                   {preview ? (
-                    <img
-                      src={preview}
-                      alt={`Reference preview ${index + 1}`}
-                      className="h-full w-full object-cover"
-                    />
+                    <img src={preview} alt={`Client ref ${index + 1}`} className="h-full w-full object-cover" />
                   ) : (
                     <span className="flex h-full w-full items-center justify-center break-all p-1 text-center text-[9px] text-muted-foreground">
-                      {selectedImageFiles[index]?.name}
+                      {clientImageFiles[index]?.name}
                     </span>
                   )}
                   <button
                     type="button"
-                    onClick={() => removeImagePreview(index)}
+                    onClick={() => removeImagePreview(index, "client")}
+                    className="absolute top-1 right-1 rounded-full bg-background/80 p-1 text-foreground hover:bg-background shadow-xs"
+                  >
+                    <X className="h-3 w-3" />
+                  </button>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Self reference images */}
+          <div className="flex flex-col gap-2">
+            <Label htmlFor="self_reference_image">Self References</Label>
+            <p className="text-xs text-muted-foreground">
+              Internal reference images, sketches, or notes from your team.
+            </p>
+            <div className="flex flex-wrap items-start gap-4">
+              <label
+                htmlFor="self_reference_image"
+                className="flex cursor-pointer flex-col items-center justify-center rounded-lg border-2 border-dashed border-muted-foreground/25 p-4 text-center transition-all w-full sm:w-auto min-w-[220px] min-h-[100px] hover:border-primary/50 hover:bg-muted/30"
+              >
+                <ImageIcon className="h-6 w-6 text-muted-foreground mb-1" />
+                <span className="text-xs font-medium text-foreground">Upload Self References</span>
+                <input
+                  id="self_reference_image"
+                  name="self_reference_image"
+                  type="file"
+                  multiple
+                  onChange={(e) => handleImageChange(e, "self")}
+                  className="hidden"
+                  disabled={isPending}
+                />
+              </label>
+              {selfImagePreviews.map((preview, index) => (
+                <div key={index} className="relative h-24 w-24 overflow-hidden rounded-lg border border-border bg-muted shrink-0">
+                  {preview ? (
+                    <img src={preview} alt={`Self ref ${index + 1}`} className="h-full w-full object-cover" />
+                  ) : (
+                    <span className="flex h-full w-full items-center justify-center break-all p-1 text-center text-[9px] text-muted-foreground">
+                      {selfImageFiles[index]?.name}
+                    </span>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => removeImagePreview(index, "self")}
                     className="absolute top-1 right-1 rounded-full bg-background/80 p-1 text-foreground hover:bg-background shadow-xs"
                   >
                     <X className="h-3 w-3" />

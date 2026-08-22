@@ -32,11 +32,14 @@ export async function GET(
     const { stream, contentType, contentLength } = await getTaskFileStream(key)
     const filename = path.basename(key)
 
+    const inline = searchParams.get("inline") === "1"
     const headers = new Headers()
     headers.set("Content-Type", contentType || "application/octet-stream")
     headers.set(
       "Content-Disposition",
-      `attachment; filename="${encodeURIComponent(filename)}"`
+      inline
+        ? `inline; filename="${encodeURIComponent(filename)}"`
+        : `attachment; filename="${encodeURIComponent(filename)}"`
     )
     if (contentLength) {
       headers.set("Content-Length", contentLength.toString())

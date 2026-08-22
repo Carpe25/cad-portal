@@ -1,5 +1,6 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+  output: "standalone",
   serverExternalPackages: ["sharp"],
   transpilePackages: [
     "@cometchat/chat-uikit-react",
@@ -9,6 +10,7 @@ const nextConfig = {
     serverActions: {
       bodySizeLimit: "100mb",
     },
+    proxyClientMaxBodySize: "100mb",
   },
 }
 

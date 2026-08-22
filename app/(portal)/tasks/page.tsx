@@ -64,8 +64,9 @@ async function TasksWorkspace({
         WHEN 'assigned'           THEN 1
         WHEN 'in_progress'        THEN 2
         WHEN 'in_qc_review'       THEN 3
-        WHEN 'client_ready'       THEN 4
-        ELSE 5
+        WHEN 'ready_for_client'   THEN 4
+        WHEN 'client_ready'       THEN 5
+        ELSE 6
       END,
       CASE t.priority WHEN 'high' THEN 1 WHEN 'medium' THEN 2 ELSE 3 END,
       t.deadline ASC NULLS LAST
