@@ -11,6 +11,7 @@ import {
   recordQcReviewTime,
 } from "@/lib/time-tracking"
 import { parseDeliverables, serializeDeliverables } from "@/lib/deliverables"
+import { ensureTaskStatusConstraint } from "@/lib/task-schema"
 
 export async function assignToMeAction(taskId: string) {
   try {
@@ -243,6 +244,8 @@ export async function approveSubmissionAction(
 
     const recipientId = task.assigned_to || submission?.submitted_by || session.id
 
+    await ensureTaskStatusConstraint()
+
     // Update submission
     await sql`
       UPDATE submissions
@@ -312,6 +315,8 @@ export async function markClientReadyAction(taskId: string) {
     if (task.status !== "ready_for_client") {
       return { error: "Task is not in Ready for Client status" }
     }
+
+    await ensureTaskStatusConstraint()
 
     await sql`
       UPDATE tasks SET status = 'client_ready' WHERE id = ${taskId}
